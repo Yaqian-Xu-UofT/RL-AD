@@ -13,7 +13,7 @@ RL-AD/
 │   └── sac/           # SAC agent
 ├── utils/             # Shared utilities (env wrappers, metrics, logging)
 ├── configs/           # Experiment configurations
-└── results/           # Outputs (models, logs, plots) - gitignored
+└── results/           # Put your training outputs here (gitignored)
 ```
 
 Each agent directory is independent to avoid merge conflicts when multiple people work on different agents.
