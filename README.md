@@ -20,20 +20,24 @@ Each agent directory is independent to avoid merge conflicts when multiple peopl
 
 ## Setup with uv
 
-**Sync dependencies:**
+We use `uv` for dependency management (like `pip` but faster and with better dependency resolution).
+
+**Install dependencies** (like `pip install -r requirements.txt`):
 ```bash
 uv sync
 ```
+This creates a `.venv/` and installs all packages from `pyproject.toml`.
 
-**Add new library:**
+**Add new library** (like `pip install package-name`):
 ```bash
 uv add package-name
 ```
+This installs the package AND automatically updates `pyproject.toml` and `uv.lock`.
 
 **Run scripts:**
 ```bash
-uv run python agents/rule_based/train.py
-# or activate venv
+uv run python agents/rule_based/train.py    # Run directly with uv
+# or activate the virtual environment first
 source .venv/bin/activate
 python agents/rule_based/train.py
 ```
