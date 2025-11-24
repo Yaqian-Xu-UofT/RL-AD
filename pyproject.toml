@@ -8,4 +8,7 @@ dependencies = [
     "highway-env>=1.10.2",
     "matplotlib>=3.10.7",
     "numpy>=2.3.4",
+    "stable-baselines3>=2.7.0",
+    "tensorboard>=2.20.0",
+    "torch>=2.2.0"
 ]
