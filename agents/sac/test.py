@@ -55,7 +55,7 @@ def test():
 
     # 4. Load the trained weights
     print("Loading actor weights from sac_actor_highway.pth")
-    actor.load_state_dict(torch.load("sac_actor_highway.pth"))
+    actor.load_state_dict(torch.load("/home/yqxu/links/scratch/RL-AD/101414/checkpoints/sac_actor_highway_2500.pth"))
 
     obs, info = env.reset()
     state = obs.flatten()

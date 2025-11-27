@@ -2,10 +2,13 @@ import gymnasium as gym
 import numpy as np
 import highway_env
 from tqdm import tqdm
+import os
 import torch
 # from agents.sac.sac_agent import SACAgent
 from agent import SAC, ReplayBuffer
 
+
+CKPT_DIR = os.environ.get("CKPTDIR")
 
 def train():
     # 1. Setup environment with Continuous Actions
@@ -75,19 +78,17 @@ def train():
                 agent.train(replay_buffer, batch_size)
 
         # logging
-        if episode % 100 == 0:
+        if episode % 500 == 0:
             print(f"Episode: {episode}, Reward: {episode_reward:.2f}")
+            torch.save(agent.actor.state_dict(), os.path.join(CKPT_DIR, f"sac_actor_highway_{episode}.pth"))
     
     # Save the model
-    torch.save(agent.actor.state_dict(), "sac_actor_highway.pth")
+    # torch.save(agent.actor.state_dict(), "sac_actor_highway_final.pth")
     env.close()
     print("Training finished")
 
 
-def main():
-    print("SAC Agent Main Function")
-    train()
 
 
 if __name__ == "__main__":
-    main()
+    train()
