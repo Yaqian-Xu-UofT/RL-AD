@@ -42,7 +42,7 @@ class NoisyObservationWrapper(ObservationWrapper):
             scale=scale, 
             size=observation.shape
         )
-        return observation + noise
+        return (observation + noise).astype(np.float32)
 
 
 # 3. Modify Reward Calculation
@@ -80,8 +80,8 @@ def main():
             "type": "Kinematics",
             "features": ["presence", "x", "y", "vx", "vy"], # Explicitly listing features for noise wrapper
         },
-        "vehicles_count": 20,  # modify traffic density
-        "other_vehicles_type": "__main__.CustomVehicle", # Register custom vehicle type as string
+        # "vehicles_count": 20,  # modify traffic density
+        # "other_vehicles_type": "__main__.CustomVehicle", # Register custom vehicle type as string
         # "show_trajectories": True,
         "duration": 300,
     }
@@ -90,7 +90,7 @@ def main():
     env = gym.make('highway-v0', render_mode='human', config=config)
     
     # Apply Wrappers
-    # env = NoisyObservationWrapper(env, speed_std=0.05, dist_std=0.05)
+    env = NoisyObservationWrapper(env, speed_std=5, dist_std=5)
     # env = CustomRewardWrapper(env)
     
     print("Environment created with CustomVehicle, NoisyObservation, and CustomReward.")
@@ -99,7 +99,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    model = DQN.load("highway_dqn/model", device=device)
+    model = DQN.load("results/models/dqn/", device=device)
     
     # Test Run
     obs, info = env.reset()
@@ -107,7 +107,7 @@ def main():
     total_reward = 0
     steps = 0
     
-    while not (done or truncated) and steps < 200:
+    while not (done or truncated):
         action, _states = model.predict(obs, deterministic=True)
         # action = env.action_space.sample()
         obs, reward, done, truncated, info = env.step(action)
