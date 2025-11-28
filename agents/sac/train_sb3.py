@@ -1,7 +1,21 @@
+# Nov 27: reward encouraging overtaking behavior
+# Aggressiveness penalty
+
 import gymnasium as gym
 import highway_env
 import os
+import numpy as np
 from stable_baselines3 import SAC
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.callbacks import CheckpointCallback
+
+import torch
+print(f"Is CUDA available: {torch.cuda.is_available()}")
+print(f"Current Device: {torch.cuda.current_device() if torch.cuda.is_available() else 'CPU'}")
+print(f"Number of GPUs: {torch.cuda.device_count() if torch.cuda.is_available() else 0}")
+print(f"Number of CPU Cores: {os.cpu_count()}")
+
 
 def train():
     # 1. Configuration and Environment Setup
@@ -9,46 +23,93 @@ def train():
         "action": {
             "type": "ContinuousAction",
             "longitudinal": True,
-            "lateral": True
+            "lateral": True,
+            "steering_range": [-np.deg2rad(15), np.deg2rad(15)],
+            "dynamical": True,
+            "clip": True
         },
-        "duration": 40,
+        "lanes_count": 4,
+        "duration": 60,  # longer episode for overtaking
         "observation": {
             "type": "Kinematics",
-            "vehicles_count": 15,
+            "vehicles_count": 15,   # observe 15 vehicles around ego
             "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
             "normalize": True,
             "absolute": False
         },
-        "offroad_terminal": True
+        "lane_change_reward": 1,  # reward for successful lane changes
+        "collision_reward": 0.0,   # TODO tune back to -0.5 after testing
+        "right_lane_reward": 0.0,   # encourage lane changing
+        "high_speed_reward": 2.5,
+        "reward_speed_range": [30, 35], # default [20, 30], ie [72, 108] km/h
+        "vehicle_density": 1.5, # denser traffic for overtaking
+        "offroad_terminal": True,
+        "normalize_reward": False
     }
+    print("Env Config", config)
+    # 2. Create Vectorized Environment (Multi-core Setup)
+    # 设置并行运行的进程数 (CPU核心数)
+    # 如果您的电脑有8核，通常设置为 4-8 之间
+    n_cpu = 20
+    
+    print(f"Creating {n_cpu} parallel environments...")
+    
+    # 使用 make_vec_env 替代 gym.make
+    env = make_vec_env(
+        env_id="highway-v0",
+        n_envs=n_cpu,
+        seed=0,
+        vec_env_cls=SubprocVecEnv, # 使用子进程进行真正的并行计算
+        env_kwargs={
+            "render_mode": None, # 训练时通常不需要渲染，节省资源
+            "config": config     # 将您的配置传递给每个环境
+        }
+    )
 
-    # 2. Create Environment
-    env = gym.make("highway-v0", render_mode=None, config=config)   # TODO
+    tensorboard_log_dir = os.path.join(os.environ.get("LOGDIR", "."), "sac_sb3_multicore_overtake_tensorboard")
 
     # 3. Initialize SB3 SAC Agent
     model = SAC(
         "MlpPolicy",
         env,
+        device="cuda",
         verbose=1,      # Training information
-        batch_size=256,
+        batch_size=1024,     # increase batch size for stability when overtaking
         ent_coef="auto",    # Automatically tune entropy (exploration)
-        buffer_size=50000,
-        # learning_starts=1000,  # number of steps before learning starts
-        train_freq=1,   # every steps we do a training step
-        gradient_steps=1, # how many gradient steps to do after each rollout 
+        buffer_size=1000000,    # buffer more transitions for better learning
+        learning_starts=20000,  # collect more transitions with random policy before learning
+        # train_freq=1,   # every steps we do a training step
+        # gradient_steps=1,
+
+        # To speed up training in multi-core setup, we can increase train frequency and gradient steps
+        train_freq=(64, "step"), # train every 64 steps to balance learning and computation
+        gradient_steps=64, # how many gradient steps to do after each rollout 
+
         tau=0.005,          # target smoothing coefficient
-        gamma=0.99,         # discount factor TODO 0.8?
+        gamma=0.99,         # discount factor
         learning_rate=3e-4,
+        tensorboard_log=tensorboard_log_dir
     )
-    print("Starting Training with SB3 SAC Agent...")
+    print("Starting Training with SB3 SAC Agent (Multi-core)...")
+
+    # Checkpoint callback to save the model periodically
+    checkpoint_callback = CheckpointCallback(
+        save_freq=200000 // n_cpu,  # Save every 200,000 steps divided by number of CPUs
+        save_path=os.environ.get("CKPTDIR", "."),
+        name_prefix="sac_sb3"
+    )
 
     # 4. Training Loop
-    model.learn(total_timesteps=50000, progress_bar=True)   # SAC typically needs 50k-100k steps to converge 
+    # 注意：在多核环境下，total_timesteps 是所有环境步数的总和
+    model.learn(total_timesteps=1000000, progress_bar=True, callback=checkpoint_callback)   
 
     # 5. Save the model
-    save_path = os.path.join(os.environ.get("CKPTDIR", "."), "sac_sb3_highway_final.zip")
-    model.save(save_path)
-    print(f"Model saved to {save_path}")
+    final_save_path = os.path.join(os.environ.get("CKPTDIR", "."), "sac_sb3.zip")
+    model.save(final_save_path)
+    print(f"Model saved to {final_save_path}")
+    
+    # 关闭环境进程
+    env.close()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+# reward encouraging overtaking behavior
+
 import gymnasium as gym
 import highway_env
 import os
@@ -25,7 +27,7 @@ def train():
             "dynamical": True,
             "clip": True
         },
-        "lanes_count": 3,
+        "lanes_count": 4,
         "duration": 60,  # longer episode for overtaking
         "observation": {
             "type": "Kinematics",
@@ -34,8 +36,8 @@ def train():
             "normalize": True,
             "absolute": False
         },
-        "lane_change_reward": 0.25,  # reward for successful lane changes
-        "collision_reward": -0.1,   # TODO tune back to -0.5 after testing
+        "lane_change_reward": 1,  # reward for successful lane changes
+        "collision_reward": 0.0,   # TODO tune back to -0.5 after testing
         "right_lane_reward": 0.0,   # encourage lane changing
         "high_speed_reward": 2.5,
         "reward_speed_range": [30, 35], # default [20, 30], ie [72, 108] km/h
@@ -63,6 +65,8 @@ def train():
         }
     )
 
+    tensorboard_log_dir = os.path.join(os.environ.get("LOGDIR", "."), "sac_sb3_multicore_overtake_tensorboard")
+
     # 3. Initialize SB3 SAC Agent
     model = SAC(
         "MlpPolicy",
@@ -83,7 +87,9 @@ def train():
         tau=0.005,          # target smoothing coefficient
         gamma=0.99,         # discount factor
         learning_rate=3e-4,
+        tensorboard_log=tensorboard_log_dir
     )
+    model.load("/home/yqxu/links/scratch/RL-AD/107677/checkpoints/sac_sb3_600000_steps.zip")
     print("Starting Training with SB3 SAC Agent (Multi-core)...")
 
     # Checkpoint callback to save the model periodically
@@ -95,7 +101,7 @@ def train():
 
     # 4. Training Loop
     # 注意：在多核环境下，total_timesteps 是所有环境步数的总和
-    model.learn(total_timesteps=1000000, progress_bar=True, callback=checkpoint_callback)   
+    model.learn(total_timesteps=1000000, progress_bar=True, callback=checkpoint_callback, log_interval=100)   
 
     # 5. Save the model
     final_save_path = os.path.join(os.environ.get("CKPTDIR", "."), "sac_sb3.zip")
