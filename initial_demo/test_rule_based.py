@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gymnasium as gym
 import highway_env
 from gymnasium.wrappers import RecordEpisodeStatistics, RecordVideo
+from highway_env.vehicle.kinematics import Vehicle
 from agents.rule_based import RuleBasedAgent
 
 
@@ -20,19 +21,23 @@ config = {
         "type": "Kinematics",
         "vehicles_count": 15,
         "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
-        "features_range": {
-            "x": [-100, 100],
-            "y": [-100, 100],
-            "vx": [-20, 20],
-            "vy": [-20, 20]
-        },
+        # "features_range": {
+        #     "x": [-100, 100],
+        #     "y": [-100, 100],
+        #     "vx": [-20, 20],
+        #     "vy": [-20, 20]
+        # },
         "normalize": False,
         "absolute": False,
         "order": "sorted"
-    }
+    },
+    "duration": 60,
+    "simulation_frequency": 15,
+    "policy_frequency": 5
 }
-
+Vehicle.MAX_SPEED = 40.0 # m/s
 env = gym.make("highway-v0", render_mode="rgb_array", config=config)
+
 
 
 # Record videos 

@@ -16,6 +16,10 @@ class RuleBasedAgent:
         
         # Default to discrete if unknown
         return self._act_discrete(observation)
+    
+    def crash_detection(self, observation):
+        # Placeholder for crash detection logic
+        pass
 
     def _act_discrete(self, observation):
         # Actions
@@ -62,9 +66,9 @@ class RuleBasedAgent:
             
             # Check adjacent lanes
             if abs(dx) < FR_DIST_TH:
-                if dy < 0 and dy > -20:
+                if dy < 0 and dy > -10:
                     right_lane_free = False
-                elif dy > 0 and dy < 20:
+                elif dy > 0 and dy < 10:
                     left_lane_free = False
         print(f"Front dist: {front_dist}, Left free: {left_lane_free}, Right free: {right_lane_free}, Ego speed: {observation[0,3]}")
         
