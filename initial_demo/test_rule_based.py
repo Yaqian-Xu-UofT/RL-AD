@@ -35,7 +35,7 @@ config = {
     "duration": 60,
     "lane_count": 4,
     "simulation_frequency": 15,
-    "policy_frequency": 1,
+    "policy_frequency": 5,
     "vehicle_density": 1.5, # denser traffic for overtaking
     "reward_speed_range": [25, 35], # Speed range for maximum reward (in m/s). Default is [20, 30].
     "speed_limit": 30, # Speed limit for the road (m/s). Other vehicles will drive around this speed.
