@@ -52,8 +52,8 @@ class RuleBasedAgent:
         FRONT_SAFE_DIST = 30 + np.power(ego_spd, 1.6) * 0.15
         FRONT_SAFE_DIST -= (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)*self.VEHICLE_LENGTH*1.25
         FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, 30)
-        LANE_CHANGE_FRONT_SAFE = 35 + np.power(ego_spd, 1.6) * 0.15
-        LANE_CHANGE_REAR_SAFE = 5
+        LANE_CHANGE_FRONT_SAFE = 32 # + np.power(ego_spd, 1.6) * 0.15
+        LANE_CHANGE_REAR_SAFE = 6
         LANE_WIDTH = 4
 
         # Cooldown logic
@@ -74,6 +74,8 @@ class RuleBasedAgent:
         dist_right_lane = 200
         left_lane_free = True
         right_lane_free = True
+        TARGET_REACT_TIME = 1.5  # seconds
+        MIN_STATIC_GAP = 5  # meters
 
         
         for i in range(1, len(observation)):
@@ -81,27 +83,55 @@ class RuleBasedAgent:
                 continue
             dx = observation[i, 1] - ego_x # relative x
             dy = observation[i, 2] - ego_y # relative y
-            dvx = observation[i, 3]
-            dvy = observation[i, 4]
+            dvx = observation[i, 3] - ego_vx
+            dvy = observation[i, 4] - ego_vy
             
             # Check vehicle in the same lane within front safe distance
             if abs(dy) < LANE_WIDTH / 2:
                 if dx > -self.VEHICLE_LENGTH:
                     dist_cur_lane = min(dist_cur_lane, dx)
             
-            # Check left lane
             if -1.5 * LANE_WIDTH < dy < -0.2 * LANE_WIDTH:
+                # Vehicle in left lane
+                if dx > 0:
+                    required_gap_front = MIN_STATIC_GAP - TARGET_REACT_TIME * dvx
+                    if dx < required_gap_front:
+                        left_lane_free = False
+                elif dx <= 0:
+                    required_gap_rear = MIN_STATIC_GAP + TARGET_REACT_TIME * dvx
+                    if -dx < required_gap_rear:
+                        left_lane_free = False
                 if -LANE_CHANGE_REAR_SAFE < dx < LANE_CHANGE_FRONT_SAFE:
                     if dx > -self.VEHICLE_LENGTH:
                         dist_left_lane = min(dx, dist_left_lane)
                     left_lane_free = False
-                    
-            # Check right lane
             if 0.2 * LANE_WIDTH < dy < 1.5 * LANE_WIDTH:
+                # Vehicle in right lane
+                if dx > 0:
+                    required_gap_front = MIN_STATIC_GAP - TARGET_REACT_TIME * dvx
+                    if dx < required_gap_front:
+                        right_lane_free = False
+                elif dx <= 0:
+                    required_gap_rear = MIN_STATIC_GAP + TARGET_REACT_TIME * dvx
+                    if -dx < required_gap_rear:
+                        right_lane_free = False
                 if -LANE_CHANGE_REAR_SAFE < dx < LANE_CHANGE_FRONT_SAFE:
                     if dx > -self.VEHICLE_LENGTH:
                         dist_right_lane = min(dx, dist_right_lane)
                     right_lane_free = False
+            # # Check left lane
+            # if -1.5 * LANE_WIDTH < dy < -0.2 * LANE_WIDTH:
+            #     if -LANE_CHANGE_REAR_SAFE < dx < LANE_CHANGE_FRONT_SAFE:
+            #         if dx > -self.VEHICLE_LENGTH:
+            #             dist_left_lane = min(dx, dist_left_lane)
+            #         left_lane_free = False
+                    
+            # # Check right lane
+            # if 0.2 * LANE_WIDTH < dy < 1.5 * LANE_WIDTH:
+            #     if -LANE_CHANGE_REAR_SAFE < dx < LANE_CHANGE_FRONT_SAFE:
+            #         if dx > -self.VEHICLE_LENGTH:
+            #             dist_right_lane = min(dx, dist_right_lane)
+            #         right_lane_free = False
 
         print(f"Front dist: {dist_cur_lane:<7.2f} "
               f"FNT safe: {FRONT_SAFE_DIST:<7.2f} "

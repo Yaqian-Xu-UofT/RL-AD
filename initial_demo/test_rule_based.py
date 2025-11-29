@@ -35,13 +35,13 @@ config = {
     "duration": 60,
     "lane_count": 4,
     "simulation_frequency": 15,
-    "policy_frequency": 5,
+    "policy_frequency": 3,
     "vehicle_density": 1.5, # denser traffic for overtaking
     "reward_speed_range": [25, 35], # Speed range for maximum reward (in m/s). Default is [20, 30].
     "speed_limit": 30, # Speed limit for the road (m/s). Other vehicles will drive around this speed.
     "action": {
         "type": "DiscreteMetaAction",
-        "target_speeds": np.linspace(20, 35, num=16), # The agent will choose from these target speeds (m/s).
+        "target_speeds": np.linspace(15, 40, num=26), # The agent will choose from these target speeds (m/s).
     }
 }
 Vehicle.MAX_SPEED = 40  # Increase max speed of vehicles in the environment
