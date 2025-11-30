@@ -189,6 +189,8 @@ class EvaluationManager:
             values = [getattr(results[agent], metric_attr) for agent in agents]
             bars = axes[i].bar(agents, values, color=agent_colors, alpha=0.8, width=0.6)
             axes[i].set_title(title, fontsize=18, fontweight='bold', color='black')
+            if 'Speed' in title:
+                axes[i].set_ylabel("Speed (m/s)", fontsize=15, fontweight='bold', color='black')
             axes[i].grid(True, axis='y', linestyle='--', alpha=0.7)
             plt.setp(axes[i].get_xticklabels(), fontweight='bold')
             
