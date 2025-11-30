@@ -8,24 +8,24 @@ class RuleBasedAgent:
         self.LEFT_LANE_Y = -2
         self.RIGHT_LANE_Y = (self.env.unwrapped.config["lane_count"]-1) * 4  # Assuming lane width of 4m
         self.VEHICLE_LENGTH = Vehicle.LENGTH
-        self.LANE_CHANGE_COOLDOWN = 8  # Minimum steps between lane changes. Default 5
+        self.LANE_CHANGE_COOLDOWN = 7  # Minimum steps between lane changes. Default 5
         self.cooldown_counter = 0  # Initialize to allow immediate lane change
         self.lane_change_cooled = True
         print(self.RIGHT_LANE_Y)
         
-    def act(self, observation):
+    def act(self, observation, episode=None):
         # Check if config exists, otherwise assume discrete
         if hasattr(self.env.unwrapped, "config") and "action" in self.env.unwrapped.config:
             action_type = self.env.unwrapped.config["action"]["type"]
             if action_type == "DiscreteMetaAction":
-                return self._act_discrete(observation)
+                return self._act_discrete(observation, episode=episode)
             elif action_type == "ContinuousAction":
-                return self._act_continuous(observation)
+                return self._act_continuous(observation, episode=episode)
         
         # Default to discrete if unknown
-        return self._act_discrete(observation)
+        return self._act_discrete(observation, episode=episode)
 
-    def _act_discrete(self, observation):
+    def _act_discrete(self, observation, episode=None):
         # Actions
         LANE_LEFT = 0
         IDLE = 1
@@ -40,7 +40,7 @@ class RuleBasedAgent:
         ego_vy = observation[0, 4]
         ego_spd = np.sqrt(ego_vx**2 + ego_vy**2)
 
-        TARGET_REACT_TIME = 1
+        TARGET_REACT_TIME = 1.2
         MIN_STATIC_GAP = self.VEHICLE_LENGTH*1.1
         FRONT_STATIC_GAP = MIN_STATIC_GAP
         REAR_STATIC_GAP = MIN_STATIC_GAP + 0.25*self.VEHICLE_LENGTH
@@ -50,7 +50,7 @@ class RuleBasedAgent:
 
 
         dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)
-        FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN)*(FRONT_SAFE_DIST - MIN_STATIC_GAP)
+        FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN)*(FRONT_SAFE_DIST - REAR_STATIC_GAP)
         # # FRONT_SAFE_DIST -= (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)*self.VEHICLE_LENGTH*0.3 # *1.25
         FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, FRONT_STATIC_GAP)
 
@@ -176,13 +176,14 @@ class RuleBasedAgent:
 
         disp_safety_gap = "[" + ", ".join([f"{x:.2f}" for x in safety_gap]) + "]"
 
-        print(f"Front dist: {dist_cur_lane:<7.2f} "
+        print(f"Episode: {episode} "
+              f"Front dist: {dist_cur_lane:<7.2f} "
               f"FNT safe: {FRONT_SAFE_DIST:<7.2f} "
               f"LC gap: {disp_safety_gap:<25} "
               f"LFT free: {str(left_lane_free):<6} "
               f"RGT free: {str(right_lane_free):<6} "
               f"AG spd: {ego_vx:<6.2f} "
-              f"AG y: {ego_y:<6.2f} "
+              f"AG y: {ego_y:<5.2f} "
               f"Can go left: {str(can_go_left):<6} "
               f"Can go right: {str(can_go_right):<6}"
               f"CD: {self.cooldown_counter:<2} "
@@ -198,7 +199,7 @@ class RuleBasedAgent:
 
 
 
-    def _act_continuous(self, observation):
+    def _act_continuous(self, observation, episode=None):
         # Placeholder for continuous action space
         # Throttle a and steering angle delta
         return np.array([0.0, 0.0])
