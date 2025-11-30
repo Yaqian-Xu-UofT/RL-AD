@@ -32,10 +32,10 @@ class NoisyObservationWrapper(ObservationWrapper):
         # Add noise to positions (distance) and velocities (speed) of each vehicle
         if observation.shape[1] == 5:
             # Assuming features: [presence, x, y, vx, vy]
-            scale = [0, self.dist_std, self.dist_std, self.speed_std, self.speed_std]
+            scale = [0, 0.01, 0.05, 0.03, 0]
         else:
             # Assuming features: [x, y, vx, vy]
-            scale = [self.dist_std, self.dist_std, self.speed_std, self.speed_std]
+            scale = [0.01, 0.05, 0.03, 0]
 
         noise = self.env.unwrapped.np_random.normal(
             loc=0.0, 
@@ -95,11 +95,11 @@ def main():
     
     print("Environment created with CustomVehicle, NoisyObservation, and CustomReward.")
 
-    # Detect device
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    print(f"Using device: {device}")
+    # # Detect device
+    # device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    # print(f"Using device: {device}")
 
-    model = DQN.load("results/models/dqn/", device=device)
+    model = DQN.load("results/models/dqn/")
     
     # Test Run
     obs, info = env.reset()
