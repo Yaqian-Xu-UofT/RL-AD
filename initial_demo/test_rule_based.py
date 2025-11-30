@@ -44,7 +44,7 @@ config = {
         "target_speeds": np.linspace(15, 40, num=26), # The agent will choose from these target speeds (m/s).
     }
 }
-Vehicle.MAX_SPEED = 40  # Increase max speed of vehicles in the environment
+Vehicle.MAX_SPEED = 40  # Set max speed of vehicles in the environment (default 40 m/s)
 env = gym.make("highway-v0", render_mode="rgb_array", config=config)
 
 
