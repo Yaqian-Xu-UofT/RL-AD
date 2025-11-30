@@ -4,6 +4,7 @@ import os
 from typing import Dict, Any, Callable, List
 from matplotlib.ticker import MaxNLocator
 from dataclasses import dataclass, field
+from datetime import datetime
 
 @dataclass
 class EvaluationMetrics:
@@ -48,11 +49,11 @@ class EvaluationManager:
             while not (done or truncated):
                 # Handle both SB3 agents and simple rule-based agents
                 if hasattr(agent, "predict"):
-                    action, _ = agent.predict(obs, deterministic=True)
+                    action, _ = agent.predict(obs, deterministic=True) # SB3-style agent
                 elif hasattr(agent, "act"):
                     action = agent.act(obs, episode=episode)  # Agent with act method
                 else:
-                    action = agent(obs) # Callable agent
+                    action = agent(obs) 
                 
                 obs, reward, done, truncated, info = env.step(action)
                 
@@ -134,17 +135,28 @@ class EvaluationManager:
         
         plt.suptitle(title, fontsize=22, fontweight='bold', color='black')
         plt.tight_layout()
-        save_path = os.path.join(self.save_dir, f"{title.replace(' ', '_')}_{self.num_episodes}_runs.png")
+        timestamp = datetime.now().strftime("%m%d_%H%M")
+        save_path = os.path.join(self.save_dir, f"{title.replace(' ', '_')}_{self.num_episodes}_runs_{timestamp}.png")
         plt.savefig(save_path, dpi=300)
         print(f"Plot saved to {save_path}")
         plt.close()
 
-    def compare_agents(self, agents_dict: Dict[str, Any], env, num_episodes=10):
+    def compare_agents(self, agents_dict: Dict[str, Any], env=None, num_episodes=10):
         compare_results = {}
         
-        for name, agent in agents_dict.items():
+        for name, item in agents_dict.items():
+            # Support (agent, env) tuple in agents_dict
+            if isinstance(item, (tuple, list)) and len(item) == 2:
+                agent, current_env = item
+            else:
+                agent = item
+                current_env = env
+            
+            if current_env is None:
+                raise ValueError(f"No environment provided for agent: {name}")
+
             print(f"Evaluating agent: {name}")
-            metrics = self.evaluate_agent(agent, env, num_episodes)
+            metrics = self.evaluate_agent(agent, current_env, num_episodes)
             compare_results[name] = metrics
             
         self.plot_comparison(compare_results)
@@ -188,7 +200,9 @@ class EvaluationManager:
                         ha='center', va='bottom', fontsize=15, fontweight='bold', color='black')
             
         plt.tight_layout()
-        save_path = os.path.join(self.save_dir, f"agent_comparison_{self.num_episodes}_runs.png")
+
+        timestamp = datetime.now().strftime("%m%d_%H%M")
+        save_path = os.path.join(self.save_dir, f"agent_comparison_{self.num_episodes}_runs_{timestamp}.png")
         plt.savefig(save_path, dpi=300)
         print(f"Comparison plot saved to {save_path}")
         plt.close()
