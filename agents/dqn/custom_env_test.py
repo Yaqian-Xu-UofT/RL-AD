@@ -7,18 +7,18 @@ from gymnasium import ObservationWrapper, Wrapper
 from stable_baselines3 import DQN
 
 
-# 1. Modify Vehicle Speed Distribution
-# Reference: https://highway-env.farama.org/dynamics/vehicle/behavior/
-class CustomVehicle(IDMVehicle):
-    @classmethod
-    def create_random(cls, road, speed=None, lane_from=None, lane_to=None, lane_id=None, spacing=1):
-        # Override to use Gaussian distribution for speed instead of Uniform
-        if speed is None:
-            # Example: Mean 25, Std 5, clipped between 15 and 35
-            speed = road.np_random.normal(loc=25.0, scale=10.0)
-            speed = np.clip(speed, 10.0, 45.0)
+# # 1. Modify Vehicle Speed Distribution
+# # Reference: https://highway-env.farama.org/dynamics/vehicle/behavior/
+# class CustomVehicle(IDMVehicle):
+#     @classmethod
+#     def create_random(cls, road, speed=None, lane_from=None, lane_to=None, lane_id=None, spacing=1):
+#         # Override to use Gaussian distribution for speed instead of Uniform
+#         if speed is None:
+#             # Example: Mean 25, Std 5, clipped between 15 and 35
+#             speed = road.np_random.normal(loc=25.0, scale=10.0)
+#             speed = np.clip(speed, 10.0, 45.0)
             
-        return super().create_random(road, speed, lane_from, lane_to, lane_id, spacing)
+#         return super().create_random(road, speed, lane_from, lane_to, lane_id, spacing)
 
 # 2. Add Gaussian Noise to Observation
 # Reference: https://gymnasium.farama.org/api/wrappers/observation_wrappers/
@@ -45,34 +45,34 @@ class NoisyObservationWrapper(ObservationWrapper):
         return (observation + noise).astype(np.float32)
 
 
-# 3. Modify Reward Calculation
-class CustomRewardWrapper(Wrapper):
-    def step(self, action):
-        obs, reward, done, truncated, info = self.env.step(action)
+# # 3. Modify Reward Calculation
+# class CustomRewardWrapper(Wrapper):
+#     def step(self, action):
+#         obs, reward, done, truncated, info = self.env.step(action)
         
-        # Access the vehicle via unwrapped env
-        vehicle = self.env.unwrapped.vehicle
-        current_speed = vehicle.speed
-        is_crashed = vehicle.crashed
+#         # Access the vehicle via unwrapped env
+#         vehicle = self.env.unwrapped.vehicle
+#         current_speed = vehicle.speed
+#         is_crashed = vehicle.crashed
         
-        new_reward = 0
+#         new_reward = 0
         
-        # 1. Modified speed reward
-        if current_speed > 28:
-            new_reward += 1.0
-        elif current_speed > 20:
-            new_reward += 0.5
+#         # 1. Modified speed reward
+#         if current_speed > 28:
+#             new_reward += 1.0
+#         elif current_speed > 20:
+#             new_reward += 0.5
             
-        # 2. Collision penalty (heavier)
-        if is_crashed:
-            new_reward -= 5.0
+#         # 2. Collision penalty (heavier)
+#         if is_crashed:
+#             new_reward -= 5.0
             
-        # 3. Lane change penalty
-        # 0: LANE_LEFT, 1: IDLE, 2: LANE_RIGHT
-        if action == 0 or action == 2:
-            new_reward -= 0.2
+#         # 3. Lane change penalty
+#         # 0: LANE_LEFT, 1: IDLE, 2: LANE_RIGHT
+#         if action == 0 or action == 2:
+#             new_reward -= 0.2
             
-        return obs, new_reward, done, truncated, info
+#         return obs, new_reward, done, truncated, info
 
 def main():
     config = {
@@ -80,10 +80,13 @@ def main():
             "type": "Kinematics",
             "features": ["presence", "x", "y", "vx", "vy"], # Explicitly listing features for noise wrapper
         },
-        # "vehicles_count": 20,  # modify traffic density
         # "other_vehicles_type": "__main__.CustomVehicle", # Register custom vehicle type as string
-        # "show_trajectories": True,
-        "duration": 300,
+        "lanes_count": 4,
+        "vehicles_density": 1,
+        "duration": 60,
+        "vehicles_count": 25,
+        "policy_frequency": 2,
+        "simulation_frequency": 15,
     }
 
     # Create Environment
