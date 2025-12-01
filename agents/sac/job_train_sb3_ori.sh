@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=train_sb3_multicore
+#SBATCH --job-name=train_sb3_ori
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=20
-#SBATCH --time=8:00:00
+#SBATCH --time=3:00:00
 #SBATCH --account=rrg-xilinliu
 #SBATCH --mail-user=yaqian.xu@mail.utoronto.ca
 #SBATCH --mail-type=END,FAIL
@@ -36,5 +36,5 @@ echo "SCRATCH=${SCRATCH:-<unset>}"
 echo "JOB_BASEDIR=$JOB_BASEDIR"
 echo "MPLCONFIGDIR=$MPLCONFIGDIR"
 echo "XDG_CACHE_HOME=$XDG_CACHE_HOME"
-uv run train_sb3_multicore.py
+uv run train_sb3_ori.py
 echo "[$(date)] Job finished"
