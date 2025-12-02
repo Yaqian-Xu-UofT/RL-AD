@@ -6,29 +6,25 @@ import numpy as np
 import torch
 import os
 
-class CustomIDMVehicle(IDMVehicle):
+class CustomVehicle(IDMVehicle):
     @classmethod
     def create_random(cls, road, speed=None, lane_from=None, lane_to=None, lane_id=None, spacing=1):
         # Override to use Gaussian distribution for speed instead of Uniform
         if speed is None:
+            # Example: Mean 25, Std 5, clipped between 15 and 35
             speed = road.np_random.normal(loc=25.0, scale=10.0)
             speed = np.clip(speed, 10.0, 45.0)
+            
         return super().create_random(road, speed, lane_from, lane_to, lane_id, spacing)
 
 class NoisyObservationWrapper(ObservationWrapper):
-    def __init__(self, env, speed_std=0.1, dist_std=0.1):
+    def __init__(self, env):
         super().__init__(env)
-        self.speed_std = speed_std
-        self.dist_std = dist_std
+
 
     def observation(self, observation):
         # Add noise to positions (distance) and velocities (speed) of each vehicle
-        if observation.shape[1] == 5:
-            # Assuming features: [presence, x, y, vx, vy]
-            scale = [0, self.dist_std, self.dist_std, self.speed_std, self.speed_std]
-        else:
-            # Assuming features: [x, y, vx, vy]
-            scale = [self.dist_std, self.dist_std, self.speed_std, self.speed_std]
+        scale = [0, 0.01, 0.05, 0.03, 0, 0, 0]
 
         noise = self.env.unwrapped.np_random.normal(
             loc=0.0, 
@@ -67,30 +63,51 @@ class SpeedRewardWrapper(Wrapper):
             
         return obs, new_reward, done, truncated, info
 
-
+# from Benjamin's implementation
 class SafetyRewardWrapper(Wrapper):
-    def step(self, action):
+    def step(
+        self, action
+    ):
         obs, reward, done, truncated, info = self.env.step(action)
-        
+
         if info['crashed']:
-            return obs, 0, done, truncated, info    # reward as 0 on crash TODO
-        
-        ego_y = obs[0][2]       # lane
+            return obs, 0, done, truncated, info
+
         for i in range(1, 6):
-            other_x = obs[i][1]  # position of other vehicle
-            other_y = obs[i][2]  # lane of other vehicle
-            other_vx = obs[i][3] # speed of other vehicle
+            other_x = obs[i][1]
+            other_y = obs[i][2]
+            other_vx = obs[i][3]
             # one vehicle length from the front vehicle in the same lane
-            if abs(ego_y - other_y) < 0.03 and abs(other_x) < 0.05:
+            if abs(other_y) < 0.03 and abs(other_x) < 0.05:
                 reward = 0
                 break
-            # one vehicle length from the front vehicle during lane changing
-            elif abs(ego_y - other_y) < 0.125 and abs(other_x) < 0.05 and other_vx < -0.125:
-                reward = 0
-                break
-            # two vehicle length from the front vehicle during lane changing
-            elif abs(ego_y - other_y) < 0.125 and abs(other_x) < 0.075 and other_vx < -0.13:
+            # 1.5 vehicle length from the front vehicle during lane changing
+            elif abs(other_y) < 0.125 and abs(other_x) < 0.0625:
                 reward *= 0.5
                 break
+            # two vehicle length from the front vehicle in the same lane with 10 m/s speed difference
+            elif abs(other_y) < 0.03 and abs(other_x) < 0.075 and other_vx < -0.12:
+                reward *= 0.5
+                break
+
+        ### Yaqian's 居中奖励
+        ### 其他人comment掉这部分
+        ego_y = obs[0][2]
+        ego_cos_h = obs[0][5]
+        # driving straight
+        if abs(ego_cos_h - 1) < 0.05:
+            # four lanes
+            delta_0 = abs(ego_y - 0)
+            delta_1 = abs(ego_y - 0.25)
+            delta_2 = abs(ego_y - 0.5)
+            delta_3 = abs(ego_y - 0.75)
+
+            min_delta = min(delta_0, delta_1, delta_2, delta_3)
+            if min_delta > 0.03:
+                reward *= 0.5
+            elif min_delta > 0.15:
+                reward *= 0.75
+        ### 其他人comment掉这部分
+
 
         return obs, reward, done, truncated, info
