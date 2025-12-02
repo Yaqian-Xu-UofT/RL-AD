@@ -209,8 +209,69 @@ def eval_rule_based_and_ppo():
     env_rb.close()
 
 
+def eval_rule_based_and_dqn():
+    from stable_baselines3 import DQN
+    import os
+
+    eval_manager = EvaluationManager(save_dir="eval_results/dqn")
+    num_episodes = 100
+
+    # Setup PPO Agent
+    print("\n--- Setting up DQN Agent ---")
+    dqn_config = {
+        "lanes_count": 4,
+        "duration": 60,  # longer episode for overtaking
+        "observation": {
+            "type": "Kinematics",
+            # "vehicles_count": 10,   # observe 15 vehicles around ego
+            "features": ["presence", "x", "y", "vx", "vy"],
+            "absolute": False,
+            "order": "sorted"
+        },
+        "policy_frequency": 2,
+        "vehicles_count": 25,
+    }
+    
+    env_dqn = gym.make("highway-v0", render_mode="rgb_array", config=dqn_config)
+    
+    # Load model
+    model_path = "results/models/dqn_default"
+    if not os.path.exists(model_path + ".zip") and not os.path.exists(model_path):
+        print(f"Warning: Model not found at {model_path}")
+        return
+
+    agent_dqn = DQN.load(model_path, env=env_dqn)
+    
+    # Setup Rule Based Agent
+    print("\n--- Setting up Rule Based Agent ---")
+    rb_config = config.copy()
+    
+    env_rb = gym.make("highway-v0", render_mode="rgb_array", config=rb_config)
+    agent_rb = RuleBasedAgent(env_rb, target_speed=29.99999) 
+    
+    # Compare using compare_agents with (agent, env) tuples
+    print("\n--- Comparing Agents ---")
+    
+    agents_dict = {
+        "DQN Agent": (agent_dqn, env_dqn),
+        "Rule Based Agent": (agent_rb, env_rb)
+    }
+    
+    # Pass None for env since each agent has its own env in the tuple
+    results = eval_manager.compare_agents(agents_dict=agents_dict, env=None, num_episodes=num_episodes)
+    
+    for name, metrics in results.items():
+        print(f"\n--- Results for {name} ---")
+        eval_manager.print_results(metrics)
+        
+    env_dqn.close()
+    env_rb.close()
+
+
 if __name__ == "__main__":
     # eval_rule_based()
     # eval_two_rule_based_agents()
     # eval_rule_based_and_sac()
-    eval_rule_based_and_ppo()
+    # eval_rule_based_and_ppo()
+    eval_rule_based_and_dqn()
+
