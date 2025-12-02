@@ -32,8 +32,8 @@ model = DQN(
   gradient_steps=1,
   target_update_interval=50,
   verbose=1,
-  tensorboard_log="results/logs/dqn_final/",
+  tensorboard_log="results/logs/dqn_default_2e5/",
   # device=device
 )
-model.learn(int(1e5))
-model.save("results/models/dqn_default/")
+model.learn(int(2e5))
+model.save("results/models/dqn_default_2e5/")
