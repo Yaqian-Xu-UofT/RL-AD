@@ -6,6 +6,8 @@ from highway_env.vehicle.kinematics import Vehicle
 from agents.rule_based.agent import RuleBasedAgent
 from agents.evaluation import EvaluationManager
 
+from agents.custom.custom import NoisyObservationWrapper
+
 config = {
     "observation": {
         "type": "Kinematics",
@@ -25,12 +27,12 @@ config = {
     "vehicles_count": 25,
 }
 
-def eval_rule_based():
+def eval_rule_based(lccd=3, trt=1.2):
     env = gym.make("highway-v0", render_mode="human", config=config)
     
-    agent = RuleBasedAgent(env)
+    agent = RuleBasedAgent(env, lccd=lccd, trt=trt)
     eval_manager = EvaluationManager(save_dir="eval_results")
-    num_episodes = 20
+    num_episodes = 100
 
     print("Starting evaluation...")
     metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
@@ -42,6 +44,23 @@ def eval_rule_based():
     
     env.close()
 
+def eval_rule_based_w_noise(lccd=3, trt=1.2):
+    env = gym.make("highway-v0", render_mode="human", config=config)
+    env = NoisyObservationWrapper(env, normalize=False)
+    
+    agent = RuleBasedAgent(env, lccd=lccd, trt=trt)
+    eval_manager = EvaluationManager(save_dir="eval_results")
+    num_episodes = 100
+
+    print("Starting evaluation with noisy observations...")
+    metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
+    eval_manager.print_results(metrics)
+            
+    # Plot metrics
+    print("\nPlotting metrics...")
+    eval_manager.plot_metrics(metrics, title="Rule Based Agent Evaluation with Noise")
+    
+    env.close()
 
 def eval_two_rule_based_agents():
     env = gym.make("highway-v0", render_mode="human", config=config)
@@ -149,7 +168,6 @@ def eval_rule_based_and_sac():
     env_sac.close()
     env_rb.close()
 
-
 def eval_rule_based_and_ppo():
     from stable_baselines3 import PPO
     import os
@@ -210,7 +228,13 @@ def eval_rule_based_and_ppo():
 
 
 if __name__ == "__main__":
-    eval_rule_based()
+    lccd = 3
+    trt = 1.2
+    for run in range(2):
+        print(f"\n=== Eval RB w. lccd={lccd} and trt={trt}: Run {run + 1} ===")
+        # eval_rule_based(lccd=lccd, trt=trt)
+        eval_rule_based_w_noise(lccd=lccd, trt=trt)
+    # eval_rule_based()
     # eval_two_rule_based_agents()
     # eval_rule_based_and_sac()
     # eval_rule_based_and_ppo()
