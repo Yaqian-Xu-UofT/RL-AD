@@ -5,8 +5,10 @@ class RuleBasedAgent:
     def __init__(self, env, target_speed=30.0):
         self.env = env
         self.TARGET_SPEED = target_speed
+
+        self.LANE_WIDTH = 4
         self.LEFT_LANE_Y = -2
-        self.RIGHT_LANE_Y = (self.env.unwrapped.config["lane_count"]-1) * 4  # Assuming lane width of 4m
+        self.RIGHT_LANE_Y = (self.env.unwrapped.config["lane_count"]-1) * self.LANE_WIDTH
         self.VEHICLE_LENGTH = Vehicle.LENGTH
         self.LANE_CHANGE_COOLDOWN = 7  # Minimum steps between lane changes. Default 5
         self.cooldown_counter = 0  # Initialize to allow immediate lane change
@@ -19,8 +21,8 @@ class RuleBasedAgent:
             action_type = self.env.unwrapped.config["action"]["type"]
             if action_type == "DiscreteMetaAction":
                 return self._act_discrete(observation, episode=episode)
-            elif action_type == "ContinuousAction":
-                return self._act_continuous(observation, episode=episode)
+            # elif action_type == "ContinuousAction":
+            #     return self._act_continuous(observation, episode=episode)
         
         # Default to discrete if unknown
         return self._act_discrete(observation, episode=episode)
@@ -40,15 +42,18 @@ class RuleBasedAgent:
         ego_vy = observation[0, 4]
         ego_spd = np.sqrt(ego_vx**2 + ego_vy**2)
 
+        # Driver related parameters
         TARGET_REACT_TIME = 1.2
         MIN_STATIC_GAP = self.VEHICLE_LENGTH*1.1
         FRONT_STATIC_GAP = MIN_STATIC_GAP
         REAR_STATIC_GAP = MIN_STATIC_GAP + 0.25*self.VEHICLE_LENGTH
-        LANE_WIDTH = 4
+
+
+        ###################################
+        ##       SAFETY ESTIMATION       ##
+        ###################################
 
         FRONT_SAFE_DIST = MIN_STATIC_GAP + ego_spd * TARGET_REACT_TIME
-
-
         dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)
         FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN)*(FRONT_SAFE_DIST - REAR_STATIC_GAP)
         # # FRONT_SAFE_DIST -= (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)*self.VEHICLE_LENGTH*0.3 # *1.25
@@ -58,8 +63,8 @@ class RuleBasedAgent:
             self.cooldown_counter -= 1
         self.lane_change_cooled = (self.cooldown_counter == 0)
 
-        can_go_left = ego_y > self.LEFT_LANE_Y + LANE_WIDTH*0.8
-        can_go_right = ego_y < self.RIGHT_LANE_Y - LANE_WIDTH*0.8
+        can_go_left = ego_y > self.LEFT_LANE_Y + self.LANE_WIDTH*0.8
+        can_go_right = ego_y < self.RIGHT_LANE_Y - self.LANE_WIDTH*0.8
 
         dist_cur_lane = 200
         dist_left_lane = 200
@@ -83,14 +88,14 @@ class RuleBasedAgent:
             dvy = observation[i, 4] - ego_vy
 
             # Vehicle in current lane
-            if abs(dy) < LANE_WIDTH / 2:
+            if abs(dy) < self.LANE_WIDTH / 2:
                 if dx > -self.VEHICLE_LENGTH:
                     if dx > 0:
                         dist_cur_lane = min(dist_cur_lane, dx)
                         if dx < 60:
                             vel_cur_lane = min(vel_cur_lane, vx)
             # Vehicle in left lane
-            if -1.5 * LANE_WIDTH < dy < -0.5 * LANE_WIDTH:
+            if -1.5 * self.LANE_WIDTH < dy < -0.5 * self.LANE_WIDTH:
                 if dx > -self.VEHICLE_LENGTH:
                     if dx > 0:
                         dist_left_lane = min(dist_left_lane, dx)
@@ -109,7 +114,7 @@ class RuleBasedAgent:
                     if -dx < safety_gap[2]:
                         left_lane_free = False
             # Vehicle in right lane
-            if 0.5 * LANE_WIDTH < dy < 1.5 * LANE_WIDTH:
+            if 0.5 * self.LANE_WIDTH < dy < 1.5 * self.LANE_WIDTH:
                 if dx > -self.VEHICLE_LENGTH:
                     if dx > 0:
                         dist_right_lane = min(dist_right_lane, dx)
@@ -128,6 +133,11 @@ class RuleBasedAgent:
                     if -dx < safety_gap[3]:
                         right_lane_free = False
 
+
+        ###################################
+        ##     DECISION MAKING LOGIC     ##
+        ###################################
+        
         action = IDLE
         front_blocked = (dist_cur_lane < FRONT_SAFE_DIST) or (vel_cur_lane < self.TARGET_SPEED-5 and dist_cur_lane < 40)
 
