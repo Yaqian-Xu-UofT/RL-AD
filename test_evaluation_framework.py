@@ -9,7 +9,7 @@ from agents.evaluation import EvaluationManager
 config = {
     "observation": {
         "type": "Kinematics",
-        "vehicles_count": 25,
+        "vehicles_count": 15,
         "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
         "normalize": False,
         "absolute": True,
@@ -30,7 +30,7 @@ def eval_rule_based():
     
     agent = RuleBasedAgent(env)
     eval_manager = EvaluationManager(save_dir="eval_results")
-    num_episodes = 2
+    num_episodes = 20
 
     print("Starting evaluation...")
     metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
@@ -210,7 +210,7 @@ def eval_rule_based_and_ppo():
 
 
 if __name__ == "__main__":
-    # eval_rule_based()
+    eval_rule_based()
     # eval_two_rule_based_agents()
     # eval_rule_based_and_sac()
-    eval_rule_based_and_ppo()
+    # eval_rule_based_and_ppo()

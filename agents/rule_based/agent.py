@@ -10,7 +10,7 @@ class RuleBasedAgent:
         self.LEFT_LANE_Y = -2
         self.RIGHT_LANE_Y = (self.env.unwrapped.config["lane_count"]-1) * self.LANE_WIDTH
         self.VEHICLE_LENGTH = Vehicle.LENGTH
-        self.LANE_CHANGE_COOLDOWN = 7  # Minimum steps between lane changes. Default 5
+        self.LANE_CHANGE_COOLDOWN = 3  # Minimum steps between lane changes. Default 5
         self.cooldown_counter = 0  # Initialize to allow immediate lane change
         self.lane_change_cooled = True
         print(self.RIGHT_LANE_Y)
@@ -44,7 +44,7 @@ class RuleBasedAgent:
 
         # Driver related parameters
         TARGET_REACT_TIME = 1.2
-        MIN_STATIC_GAP = self.VEHICLE_LENGTH*1.1
+        MIN_STATIC_GAP = self.VEHICLE_LENGTH*1.001
         FRONT_STATIC_GAP = MIN_STATIC_GAP
         REAR_STATIC_GAP = MIN_STATIC_GAP + 0.25*self.VEHICLE_LENGTH
 
@@ -104,6 +104,7 @@ class RuleBasedAgent:
                 # Left cars in front
                 if dx > 0:
                     safety_gap[0] = FRONT_STATIC_GAP - TARGET_REACT_TIME * dvx
+                    safety_gap[0] = max(safety_gap[0], MIN_STATIC_GAP)
                     if dx < safety_gap[0]:
                         left_lane_free = False
                 # Left cars in rear
@@ -111,6 +112,7 @@ class RuleBasedAgent:
                     if -dx < REAR_STATIC_GAP:
                         right_lane_free = False
                     safety_gap[2] = REAR_STATIC_GAP + TARGET_REACT_TIME * dvx
+                    safety_gap[2] = max(safety_gap[2], MIN_STATIC_GAP)
                     if -dx < safety_gap[2]:
                         left_lane_free = False
             # Vehicle in right lane
@@ -123,6 +125,7 @@ class RuleBasedAgent:
                 # Right cars in front
                 if dx > 0:
                     safety_gap[1] = FRONT_STATIC_GAP - TARGET_REACT_TIME * dvx
+                    safety_gap[1] = max(safety_gap[1], MIN_STATIC_GAP)
                     if dx < safety_gap[1]:
                         right_lane_free = False
                 # Right cars in rear
@@ -130,6 +133,7 @@ class RuleBasedAgent:
                     if -dx < REAR_STATIC_GAP:
                         right_lane_free = False
                     safety_gap[3] = REAR_STATIC_GAP + TARGET_REACT_TIME * dvx
+                    safety_gap[3] = max(safety_gap[3], MIN_STATIC_GAP)
                     if -dx < safety_gap[3]:
                         right_lane_free = False
 
@@ -137,7 +141,7 @@ class RuleBasedAgent:
         ###################################
         ##     DECISION MAKING LOGIC     ##
         ###################################
-        
+
         action = IDLE
         front_blocked = (dist_cur_lane < FRONT_SAFE_DIST) or (vel_cur_lane < self.TARGET_SPEED-5 and dist_cur_lane < 40)
 
