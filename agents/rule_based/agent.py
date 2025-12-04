@@ -2,7 +2,7 @@ import numpy as np
 from highway_env.vehicle.kinematics import Vehicle
 
 class RuleBasedAgent:
-    def __init__(self, env, target_speed=30.0):
+    def __init__(self, env, target_speed=30.0, lccd=3, trt=1.2):
         self.env = env
         self.TARGET_SPEED = target_speed
 
@@ -10,9 +10,10 @@ class RuleBasedAgent:
         self.LEFT_LANE_Y = -2
         self.RIGHT_LANE_Y = (self.env.unwrapped.config["lane_count"]-1) * self.LANE_WIDTH
         self.VEHICLE_LENGTH = Vehicle.LENGTH
-        self.LANE_CHANGE_COOLDOWN = 3  # Minimum steps between lane changes. Default 5
+        self.LANE_CHANGE_COOLDOWN = lccd  # Minimum steps between lane changes. Default 5
         self.cooldown_counter = 0  # Initialize to allow immediate lane change
         self.lane_change_cooled = True
+        self.trt = trt
         print(self.RIGHT_LANE_Y)
         
     def act(self, observation, episode=None):
@@ -43,7 +44,7 @@ class RuleBasedAgent:
         ego_spd = np.sqrt(ego_vx**2 + ego_vy**2)
 
         # Driver related parameters
-        TARGET_REACT_TIME = 1.2
+        TARGET_REACT_TIME = self.trt
         MIN_STATIC_GAP = self.VEHICLE_LENGTH*1.001
         FRONT_STATIC_GAP = MIN_STATIC_GAP
         REAR_STATIC_GAP = MIN_STATIC_GAP + 0.25*self.VEHICLE_LENGTH
@@ -57,6 +58,7 @@ class RuleBasedAgent:
         dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)
         FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN)*(FRONT_SAFE_DIST - REAR_STATIC_GAP)
         # # FRONT_SAFE_DIST -= (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)*self.VEHICLE_LENGTH*0.3 # *1.25
+        # FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, FRONT_STATIC_GAP)
         FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, FRONT_STATIC_GAP)
 
         if self.cooldown_counter > 0:
@@ -75,6 +77,8 @@ class RuleBasedAgent:
         vel_cur_lane = 100
         vel_left_lane = 100
         vel_right_lane = 100
+
+        
 
         safety_gap = np.zeros(4) # 0: LF, 1: RF, 2: LR, 3: RR
         for i in range(1, len(observation)):
@@ -190,21 +194,22 @@ class RuleBasedAgent:
 
         disp_safety_gap = "[" + ", ".join([f"{x:.2f}" for x in safety_gap]) + "]"
 
-        print(f"Episode: {episode} "
-              f"Front dist: {dist_cur_lane:<7.2f} "
-              f"FNT safe: {FRONT_SAFE_DIST:<7.2f} "
-              f"LC gap: {disp_safety_gap:<25} "
-              f"LFT free: {str(left_lane_free):<6} "
-              f"RGT free: {str(right_lane_free):<6} "
-              f"AG spd: {ego_vx:<6.2f} "
-              f"AG y: {ego_y:<5.2f} "
-              f"Can go left: {str(can_go_left):<6} "
-              f"Can go right: {str(can_go_right):<6}"
-              f"CD: {self.cooldown_counter:<2} "
-              f"CD?: {self.lane_change_cooled}")
+        ## Disabled when testing multiple runs
+        # print(f"Episode: {episode} "
+        #       f"Front dist: {dist_cur_lane:<7.2f} "
+        #       f"FNT safe: {FRONT_SAFE_DIST:<7.2f} "
+        #       f"LC gap: {disp_safety_gap:<25} "
+        #       f"LFT free: {str(left_lane_free):<6} "
+        #       f"RGT free: {str(right_lane_free):<6} "
+        #       f"AG spd: {ego_vx:<6.2f} "
+        #       f"AG y: {ego_y:<5.2f} "
+        #       f"Can go left: {str(can_go_left):<6} "
+        #       f"Can go right: {str(can_go_right):<6}"
+        #       f"CD: {self.cooldown_counter:<2} "
+        #       f"CD?: {self.lane_change_cooled}")
         
-        text_action = {0: "LANE_LEFT", 1: "IDLE", 2: "LANE_RIGHT", 3: "FASTER", 4: "SLOWER"}
-        print(f"Action: {text_action[action]}")
+        # text_action = {0: "LANE_LEFT", 1: "IDLE", 2: "LANE_RIGHT", 3: "FASTER", 4: "SLOWER"}
+        # print(f"Action: {text_action[action]}")
         return action
 
 
