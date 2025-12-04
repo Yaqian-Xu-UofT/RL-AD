@@ -4,17 +4,28 @@ from highway_env.vehicle.kinematics import Vehicle
 class RuleBasedAgent:
     def __init__(self, env, target_speed=30.0, lccd=3, trt=1.2):
         self.env = env
-        self.TARGET_SPEED = target_speed
 
+        # Environment related parameters
         self.LANE_WIDTH = 4
         self.LEFT_LANE_Y = -2
         self.RIGHT_LANE_Y = (self.env.unwrapped.config["lane_count"]-1) * self.LANE_WIDTH
+        # print(f"Right lane y coordinate: {self.RIGHT_LANE_Y}")
+
+        # Vehicle related parameters
         self.VEHICLE_LENGTH = Vehicle.LENGTH
+        self.TARGET_SPEED = target_speed
+
+        # Lane change related parameters
         self.LANE_CHANGE_COOLDOWN = lccd  # Minimum steps between lane changes. Default 5
         self.cooldown_counter = 0  # Initialize to allow immediate lane change
         self.lane_change_cooled = True
-        self.trt = trt
-        print(self.RIGHT_LANE_Y)
+
+        # Driver related parameters
+        self.TARGET_REACT_TIME = trt
+        self.MIN_STATIC_GAP = self.VEHICLE_LENGTH * 1.001
+        self.FRONT_STATIC_GAP = self.MIN_STATIC_GAP
+        self.REAR_STATIC_GAP = self.MIN_STATIC_GAP + 0.25 * self.VEHICLE_LENGTH
+        # print(f"Front static gap: {self.FRONT_STATIC_GAP}, Rear static gap: {self.REAR_STATIC_GAP}")
         
     def act(self, observation, episode=None):
         # Check if config exists, otherwise assume discrete
@@ -43,23 +54,23 @@ class RuleBasedAgent:
         ego_vy = observation[0, 4]
         ego_spd = np.sqrt(ego_vx**2 + ego_vy**2)
 
-        # Driver related parameters
-        TARGET_REACT_TIME = self.trt
-        MIN_STATIC_GAP = self.VEHICLE_LENGTH*1.001
-        FRONT_STATIC_GAP = MIN_STATIC_GAP
-        REAR_STATIC_GAP = MIN_STATIC_GAP + 0.25*self.VEHICLE_LENGTH
+        # # Driver related parameters
+        # TARGET_REACT_TIME = self.TARGET_REACT_TIME
+        # MIN_STATIC_GAP = self.VEHICLE_LENGTH*1.001
+        # FRONT_STATIC_GAP = MIN_STATIC_GAP
+        # REAR_STATIC_GAP = MIN_STATIC_GAP + 0.25*self.VEHICLE_LENGTH
 
 
         ###################################
         ##       SAFETY ESTIMATION       ##
         ###################################
 
-        FRONT_SAFE_DIST = MIN_STATIC_GAP + ego_spd * TARGET_REACT_TIME
+        FRONT_SAFE_DIST = self.MIN_STATIC_GAP + ego_spd * self.TARGET_REACT_TIME
         dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)
-        FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN)*(FRONT_SAFE_DIST - REAR_STATIC_GAP)
+        FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN)*(FRONT_SAFE_DIST - self.REAR_STATIC_GAP)
         # # FRONT_SAFE_DIST -= (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)*self.VEHICLE_LENGTH*0.3 # *1.25
         # FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, FRONT_STATIC_GAP)
-        FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, FRONT_STATIC_GAP)
+        FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, self.FRONT_STATIC_GAP)
 
         if self.cooldown_counter > 0:
             self.cooldown_counter -= 1
@@ -107,16 +118,16 @@ class RuleBasedAgent:
                             vel_left_lane = min(vel_left_lane, vx)
                 # Left cars in front
                 if dx > 0:
-                    safety_gap[0] = FRONT_STATIC_GAP - TARGET_REACT_TIME * dvx
-                    safety_gap[0] = max(safety_gap[0], MIN_STATIC_GAP)
+                    safety_gap[0] = self.FRONT_STATIC_GAP - self.TARGET_REACT_TIME * dvx
+                    safety_gap[0] = max(safety_gap[0], self.MIN_STATIC_GAP)
                     if dx < safety_gap[0]:
                         left_lane_free = False
                 # Left cars in rear
                 else:
-                    if -dx < REAR_STATIC_GAP:
+                    if -dx < self.REAR_STATIC_GAP:
                         right_lane_free = False
-                    safety_gap[2] = REAR_STATIC_GAP + TARGET_REACT_TIME * dvx
-                    safety_gap[2] = max(safety_gap[2], MIN_STATIC_GAP)
+                    safety_gap[2] = self.REAR_STATIC_GAP + self.TARGET_REACT_TIME * dvx
+                    safety_gap[2] = max(safety_gap[2], self.MIN_STATIC_GAP)
                     if -dx < safety_gap[2]:
                         left_lane_free = False
             # Vehicle in right lane
@@ -128,16 +139,16 @@ class RuleBasedAgent:
                             vel_right_lane = min(vel_right_lane, vx)
                 # Right cars in front
                 if dx > 0:
-                    safety_gap[1] = FRONT_STATIC_GAP - TARGET_REACT_TIME * dvx
-                    safety_gap[1] = max(safety_gap[1], MIN_STATIC_GAP)
+                    safety_gap[1] = self.FRONT_STATIC_GAP - self.TARGET_REACT_TIME * dvx
+                    safety_gap[1] = max(safety_gap[1], self.MIN_STATIC_GAP)
                     if dx < safety_gap[1]:
                         right_lane_free = False
                 # Right cars in rear
                 else:
-                    if -dx < REAR_STATIC_GAP:
+                    if -dx < self.REAR_STATIC_GAP:
                         right_lane_free = False
-                    safety_gap[3] = REAR_STATIC_GAP + TARGET_REACT_TIME * dvx
-                    safety_gap[3] = max(safety_gap[3], MIN_STATIC_GAP)
+                    safety_gap[3] = self.REAR_STATIC_GAP + self.TARGET_REACT_TIME * dvx
+                    safety_gap[3] = max(safety_gap[3], self.MIN_STATIC_GAP)
                     if -dx < safety_gap[3]:
                         right_lane_free = False
 
@@ -218,7 +229,7 @@ class RuleBasedAgent:
 
 
 
-    def _act_continuous(self, observation, episode=None):
-        # Placeholder for continuous action space
-        # Throttle a and steering angle delta
-        return np.array([0.0, 0.0])
+    # def _act_continuous(self, observation, episode=None):
+    #     # Placeholder for continuous action space
+    #     # Throttle a and steering angle delta
+    #     return np.array([0.0, 0.0])
