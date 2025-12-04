@@ -226,15 +226,58 @@ def eval_rule_based_and_ppo():
     env_ppo.close()
     env_rb.close()
 
+def eval_ppo():
+    from stable_baselines3 import PPO
+    import os
+
+    ppo_config = {
+        "lanes_count": 4,
+        "duration": 60,  # longer episode for overtaking
+        "observation": {
+            "type": "Kinematics",
+            "vehicles_count": 10,   # observe 15 vehicles around ego
+            "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
+            "absolute": False,
+            "order": "sorted"
+        },
+        "policy_frequency": 2,
+        "vehicles_count": 25,
+    }
+    
+    env_ppo = gym.make("highway-v0", render_mode="rgb_array", config=ppo_config)
+
+    # Load model
+    model_path = "agents/ppo/save_models/11.29_penalty_2/model"
+    # model_path = "agents/ppo/save_models/12.1_penalty_3/model"
+    if not os.path.exists(model_path + ".zip") and not os.path.exists(model_path):
+        print(f"Warning: Model not found at {model_path}")
+        return
+
+    agent = PPO.load(model_path, env=env_ppo)
+    
+
+    eval_manager = EvaluationManager(save_dir="eval_results")
+    num_episodes = 100
+
+    print("Starting evaluation...")
+    metrics = eval_manager.evaluate_agent(agent=agent, env=env_ppo, num_episodes=num_episodes)
+    eval_manager.print_results(metrics)
+            
+    # Plot metrics
+    print("\nPlotting metrics...")
+    eval_manager.plot_metrics(metrics, title="ppo Agent Evaluation")
+    
+    env_ppo.close()
 
 if __name__ == "__main__":
-    lccd = 3
-    trt = 1.2
-    for run in range(2):
-        print(f"\n=== Eval RB w. lccd={lccd} and trt={trt}: Run {run + 1} ===")
-        # eval_rule_based(lccd=lccd, trt=trt)
-        eval_rule_based_w_noise(lccd=lccd, trt=trt)
+    # lccd = 3
+    # trt = 1.2
+    # for run in range(2):
+    #     print(f"\n=== Eval RB w. lccd={lccd} and trt={trt}: Run {run + 1} ===")
+    #     # eval_rule_based(lccd=lccd, trt=trt)
+    #     eval_rule_based_w_noise(lccd=lccd, trt=trt)
     # eval_rule_based()
     # eval_two_rule_based_agents()
     # eval_rule_based_and_sac()
     # eval_rule_based_and_ppo()
+    eval_ppo()
