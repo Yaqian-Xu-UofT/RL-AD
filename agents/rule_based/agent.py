@@ -193,7 +193,7 @@ class RuleBasedAgent:
                 if self.lane_change_cooled and can_go_right and right_lane_free and dist_right_lane > dist_cur_lane + 10:
                     options.append(LANE_RIGHT)
                 if len(options) == 0:
-                    action = IDLE
+                    action = FASTER #IDLE
                 elif len(options) == 1:
                     action = options[0]
                 else:
@@ -233,3 +233,94 @@ class RuleBasedAgent:
     #     # Placeholder for continuous action space
     #     # Throttle a and steering angle delta
     #     return np.array([0.0, 0.0])
+
+
+    def _act_hy_safe_rule(self, observation, episode=None, action=1):
+        # Input: action from RL agents
+        # Determine if it is safe
+        # If not safe, return a safe action
+        
+        LANE_LEFT = 0
+        IDLE = 1
+        LANE_RIGHT = 2
+        FASTER = 3
+        SLOWER = 4
+
+        ego_x = observation[0, 1]
+        ego_y = observation[0, 2]
+        ego_vx = observation[0, 3]
+        ego_vy = observation[0, 4]
+        ego_spd = np.sqrt(ego_vx**2 + ego_vy**2)
+
+        FRONT_SAFE_DIST = self.MIN_STATIC_GAP + ego_spd * self.TARGET_REACT_TIME
+        dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)
+        FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN) * (FRONT_SAFE_DIST - self.REAR_STATIC_GAP)
+        FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, self.FRONT_STATIC_GAP)
+
+        dist_cur_lane = 200
+        left_lane_free = True
+        right_lane_free = True
+        
+        can_go_left = ego_y > self.LEFT_LANE_Y + self.LANE_WIDTH * 0.8
+        can_go_right = ego_y < self.RIGHT_LANE_Y - self.LANE_WIDTH * 0.8
+
+        for i in range(1, len(observation)):
+            if observation[i, 0] == 0: 
+                continue
+            dx = observation[i, 1] - ego_x
+            dy = observation[i, 2] - ego_y
+            dvx = observation[i, 3] - ego_vx
+            
+            # Current lane
+            if abs(dy) < self.LANE_WIDTH / 2:
+                if dx > 0: # Cars in front
+                    dist_cur_lane = min(dist_cur_lane, dx)
+
+            # Left lane
+            if -1.5 * self.LANE_WIDTH < dy < -0.5 * self.LANE_WIDTH:
+                # Check left side
+                if dx > 0: # Front left
+                    safe_gap = max(self.FRONT_STATIC_GAP - self.TARGET_REACT_TIME * dvx, self.MIN_STATIC_GAP)
+                    if dx < safe_gap: 
+                        left_lane_free = False
+                else: # Front right
+                    safe_gap = max(self.REAR_STATIC_GAP + self.TARGET_REACT_TIME * dvx, self.MIN_STATIC_GAP)
+                    if -dx < safe_gap: 
+                        left_lane_free = False
+
+            # right lane
+            if 0.5 * self.LANE_WIDTH < dy < 1.5 * self.LANE_WIDTH:
+                # Check right side
+                if dx > 0: # Right front
+                    safe_gap = max(self.FRONT_STATIC_GAP - self.TARGET_REACT_TIME * dvx, self.MIN_STATIC_GAP)
+                    if dx < safe_gap: 
+                        right_lane_free = False
+                else: # Right back
+                    safe_gap = max(self.REAR_STATIC_GAP + self.TARGET_REACT_TIME * dvx, self.MIN_STATIC_GAP)
+                    if -dx < safe_gap: 
+                        right_lane_free = False
+        
+        # Action safety check
+        safe_action = action
+        front_blocked = dist_cur_lane < FRONT_SAFE_DIST
+
+        # Lane change safety check
+        if action == LANE_LEFT:
+            if not (can_go_left and left_lane_free):
+                safe_action = IDLE # Prohibits unsafe left lane change
+        
+        elif action == LANE_RIGHT:
+            if not (can_go_right and right_lane_free):
+                safe_action = IDLE # Prohibits unsafe right lane change
+
+        # Longitudinal safety check
+        if safe_action in [IDLE, FASTER]:
+            if front_blocked:
+                safe_action = SLOWER
+            elif safe_action == FASTER and ego_vx > self.TARGET_SPEED:
+                safe_action = IDLE
+
+        if not safe_action == action:
+            print("Action modified from {action} to {safe_action}")
+            
+        return safe_action
