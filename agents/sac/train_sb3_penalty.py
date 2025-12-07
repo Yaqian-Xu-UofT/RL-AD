@@ -32,7 +32,7 @@ def train():
             "type": "ContinuousAction",
             "longitudinal": True,
             "lateral": True,
-            "steering_range": [-np.deg2rad(15), np.deg2rad(15)],
+            "steering_range": [-np.deg2rad(10), np.deg2rad(10)],
             "dynamical": True,
             "clip": True
         },
@@ -46,9 +46,9 @@ def train():
         },
 
         "lane_change_reward": 1,  # reward for successful lane changes
-        "collision_reward": -0.1,  
+        "collision_reward": -1,  
         "right_lane_reward": 0.0,   # encourage lane changing
-        "high_speed_reward": 2.5,
+        "high_speed_reward": 1.5,
         "reward_speed_range": [25, 30], # default [20, 30], ie [72, 108] km/h
         "offroad_terminal": True,
         "normalize_reward": False    # TODO

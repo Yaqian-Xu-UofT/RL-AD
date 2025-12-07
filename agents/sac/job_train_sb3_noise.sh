@@ -4,7 +4,7 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=20
-#SBATCH --time=3:00:00
+#SBATCH --time=5:00:00
 #SBATCH --account=rrg-xilinliu
 #SBATCH --mail-user=yaqian.xu@mail.utoronto.ca
 #SBATCH --mail-type=END,FAIL

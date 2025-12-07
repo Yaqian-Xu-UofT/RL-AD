@@ -33,7 +33,7 @@ class NoisyObservationWrapper(ObservationWrapper):
         # scale = [0, 0.01/2*0.5, 0.05/0.8*0.5, 0.01/2*0.5/0.5, 0.05/0.8*0.5*(1.414/0.5), 0, 0]
         if self.normalize:
             scale = self.normalize_noise(scale) 
-            print("Normalized noise scale:", scale)
+            # print("Normalized noise scale:", scale)
         # if not self.normalize:
         #     scale = self.denormalize_noise(scale)
         #     print("Denormalized noise scale:", scale)
@@ -142,8 +142,8 @@ class SafetyRewardWrapper(Wrapper):
                 reward *= 0.5
                 break
 
-        ### Yaqian's 居中奖励
-        ### 其他人comment掉这部分
+        ### SAC's reward when ego in the middle of the lane
+        ### others comment out this part
         ego_y = obs[0][2]
         ego_cos_h = obs[0][5]
         # driving straight
@@ -157,9 +157,9 @@ class SafetyRewardWrapper(Wrapper):
             min_delta = min(delta_0, delta_1, delta_2, delta_3)
             if min_delta > 0.03:
                 reward *= 0.5
-            elif min_delta > 0.15:
+            elif min_delta > 0.015:
                 reward *= 0.75
-        ### 其他人comment掉这部分
+        ### others comment out this part
 
 
         return obs, reward, done, truncated, info

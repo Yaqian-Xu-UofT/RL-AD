@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium import ObservationWrapper, Wrapper
 from highway_env.vehicle.behavior import IDMVehicle
 from highway_env.vehicle.kinematics import Vehicle
+from highway_env.road.lane import AbstractLane
 import numpy as np
 import torch
 import os
@@ -17,14 +18,18 @@ class CustomVehicle(IDMVehicle):
             
         return super().create_random(road, speed, lane_from, lane_to, lane_id, spacing)
 
-class NoisyObservationWrapper(ObservationWrapper):
-    def __init__(self, env):
-        super().__init__(env)
 
+class NoisyObservationWrapper(ObservationWrapper):
+    def __init__(self, env, normalize=True):
+        super().__init__(env)
+        self.normalize = normalize
 
     def observation(self, observation):
         # Add noise to positions (distance) and velocities (speed) of each vehicle
-        scale = [0, 0.01, 0.05, 0.03, 0, 0, 0]
+        # Update: condition on normalize
+        scale = [0, 0.25, 0.25, 0.4, 0, 0, 0]
+        if self.normalize:
+            scale = self.normalize_noise(scale) 
 
         noise = self.env.unwrapped.np_random.normal(
             loc=0.0, 
@@ -32,36 +37,46 @@ class NoisyObservationWrapper(ObservationWrapper):
             size=observation.shape
         )
         return (observation + noise).astype(np.float32)
+    
+    # Referencing normalize_obs() in highway_env (for lane_count = 4 only)
+    def normalize_noise(self, phys_noise_std: float) -> dict:
+        features_range = {
+            1: [-5.0 * Vehicle.MAX_SPEED, 5.0 * Vehicle.MAX_SPEED],
+            2: [
+                -AbstractLane.DEFAULT_WIDTH * 4,
+                AbstractLane.DEFAULT_WIDTH * 4,
+            ],
+            3: [-2 * Vehicle.MAX_SPEED, 2 * Vehicle.MAX_SPEED],
+            4: [-2 * Vehicle.MAX_SPEED, 2 * Vehicle.MAX_SPEED],
+        }
 
+        norm_noise_std = np.zeros(len(phys_noise_std))
 
-# 3. Modify Reward function based on speed 
-class SpeedRewardWrapper(Wrapper):
-    def step(self, action):
-        obs, reward, done, truncated, info = self.env.step(action)
-        
-        # Access the vehicle via unwrapped env
-        vehicle = self.env.unwrapped.vehicle
-        current_speed = vehicle.speed
-        is_crashed = vehicle.crashed
-        
-        new_reward = 0
-        
-        # 1. Modified speed reward
-        if current_speed > 28:
-            new_reward += 1.0
-        elif current_speed > 20:
-            new_reward += 0.5
-            
-        # 2. Collision penalty (heavier)
-        if is_crashed:
-            new_reward -= 5.0
-            
-        # 3. Lane change penalty
-        # 0: LANE_LEFT, 1: IDLE, 2: LANE_RIGHT
-        if action == 0 or action == 2:
-            new_reward -= 0.2
-            
-        return obs, new_reward, done, truncated, info
+        for feature, f_range in features_range.items():
+            phys_range = f_range[1] - f_range[0]
+            norm_noise_std[feature] = phys_noise_std[feature] / (phys_range / (1-(-1)))
+
+        return norm_noise_std
+
+    # Referencing normalize_obs() in highway_env (for lane_count = 4 only)
+    def denormalize_noise(self, norm_std: float) -> dict:
+        features_range = {
+            1: [-5.0 * Vehicle.MAX_SPEED, 5.0 * Vehicle.MAX_SPEED],
+            2: [
+                -AbstractLane.DEFAULT_WIDTH * 4,
+                AbstractLane.DEFAULT_WIDTH * 4,
+            ],
+            3: [-2 * Vehicle.MAX_SPEED, 2 * Vehicle.MAX_SPEED],
+            4: [-2 * Vehicle.MAX_SPEED, 2 * Vehicle.MAX_SPEED],
+        }
+
+        phys_noise_std = np.zeros(len(norm_std))
+
+        for feature, f_range in features_range.items():
+            phys_range = f_range[1] - f_range[0]
+            phys_noise_std[feature] = norm_std[feature] * (phys_range / (1-(-1)))
+
+        return phys_noise_std
 
 # from Benjamin's implementation
 class SafetyRewardWrapper(Wrapper):
@@ -90,8 +105,8 @@ class SafetyRewardWrapper(Wrapper):
                 reward *= 0.5
                 break
 
-        ### Yaqian's 居中奖励
-        ### 其他人comment掉这部分
+        ### SAC's reward when ego in the middle of the lane
+        ### others comment out this part
         ego_y = obs[0][2]
         ego_cos_h = obs[0][5]
         # driving straight
@@ -105,9 +120,9 @@ class SafetyRewardWrapper(Wrapper):
             min_delta = min(delta_0, delta_1, delta_2, delta_3)
             if min_delta > 0.03:
                 reward *= 0.5
-            elif min_delta > 0.15:
+            elif min_delta > 0.015:
                 reward *= 0.75
-        ### 其他人comment掉这部分
+        ### others comment out this part
 
 
         return obs, reward, done, truncated, info
