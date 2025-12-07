@@ -49,22 +49,21 @@ class EvaluationManager:
             while not (done or truncated):
                 # Handle both SB3 agents and simple rule-based agents
                 if hasattr(agent, "predict"):
-                    action, _ = agent.predict(obs, deterministic=True) # SB3-style agent
+                    action, _ = agent.predict(obs, deterministic=True) # SB3 agent
                 elif hasattr(agent, "act"):
-                    action = agent.act(obs, episode=episode)  # Agent with act method
+                    action = agent.act(obs, episode=episode)  # RB agent
                 else:
-                    action = agent(obs) 
+                    return None
                 
                 obs, reward, done, truncated, info = env.step(action)
                 
                 episode_reward += reward
                 episode_length += 1
                 
-                # Collect speed if available in info
-                if "speed" in info:
-                    episode_speeds.append(info["speed"])
+                # Check speed info
+                episode_speeds.append(info.get("speed", 0))
                 
-                # Check for specific events in info
+                # Check for collision
                 if info.get("crashed", False):
                     metrics.collisions += 1
                     print(f"Collision detected in episode {episode + 1}.")
@@ -113,21 +112,42 @@ class EvaluationManager:
         axes[0].set_xlim(1, self.num_episodes)
         axes[0].xaxis.set_major_locator(MaxNLocator(integer=True))
         axes[0].grid(True, linestyle='--', alpha=0.7)
+        # put average reward value on the plot, with background being half transparent white box
+        avg_reward = np.mean(metrics.rewards)
+        axes[0].text(0.9, 0.1, 
+                    f'Avg. Reward: {avg_reward:.2f}', 
+                    transform=axes[0].transAxes, 
+                    ha='right', va='top', 
+                    fontsize=15, fontweight='bold', color='black', 
+                    bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'))
         
         # Speeds - Green
         axes[1].plot(range(1, self.num_episodes + 1), metrics.average_speeds, color='green', linewidth=2, marker='s', markersize=8)
         axes[1].set_title("Average Speed per Episode", fontsize=18, fontweight='bold', color='black')
         axes[1].set_xlabel("Episode", fontsize=15, fontweight='bold', color='black')
-        axes[1].set_ylabel("Speed", fontsize=15, fontweight='bold', color='black')
+        axes[1].set_ylabel("Speed (m/s)", fontsize=15, fontweight='bold', color='black')
         axes[1].set_xlim(1, self.num_episodes)
         axes[1].xaxis.set_major_locator(MaxNLocator(integer=True))
         axes[1].grid(True, linestyle='--', alpha=0.7)
+        # put average speed value on the plot, with background being half transparent white box
+        avg_speed = np.mean(metrics.average_speeds)
+        axes[1].text(0.9, 0.1, 
+                    f'Avg. Speed: {avg_speed:.2f}', 
+                    transform=axes[1].transAxes, 
+                    ha='right', va='top', 
+                    fontsize=15, fontweight='bold', color='black', 
+                    bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'))
         
         # Rates - Blue/Red
         rates = ["Collision Rate", "Success Rate"]
         values = [metrics.collision_rate, metrics.success_rate]
         # Red for collision (negative) and Blue for success (positive)
-        axes[2].bar(rates, values, color=['red', 'blue'], alpha=0.8, width=0.5)
+        bars = axes[2].bar(rates, values, color=['red', 'blue'], alpha=0.8, width=0.5)
+        for bar in bars:
+            height = bar.get_height()
+            axes[2].text(bar.get_x() + bar.get_width()/2., height,
+                    f'{height:.2f}',
+                    ha='center', va='bottom', fontsize=15, fontweight='bold', color='black')
         axes[2].set_title("Performance Rates", fontsize=18, fontweight='bold', color='black')
         plt.setp(axes[2].get_xticklabels(), fontweight='bold')
         axes[2].set_ylim(0, 1)
@@ -163,15 +183,11 @@ class EvaluationManager:
         return compare_results
 
     def plot_comparison(self, results: Dict[str, EvaluationMetrics]):
-        """
-        Plot comparison between agents.
-        """
         # Set font to Arial
         plt.rcParams['font.family'] = 'Arial'
         plt.rcParams['font.size'] = 12
 
         agents = list(results.keys())
-        # Map Plot Title -> Metric Attribute Name
         metrics_map = {
             "Overall Average Reward": "overall_avg_reward",
             "Collision Rate": "collision_rate",
@@ -189,9 +205,25 @@ class EvaluationManager:
             values = [getattr(results[agent], metric_attr) for agent in agents]
             bars = axes[i].bar(agents, values, color=agent_colors, alpha=0.8, width=0.6)
             axes[i].set_title(title, fontsize=18, fontweight='bold', color='black')
+            if 'Reward' in title:
+                avg_reward = np.mean(values)
+                axes[0].text(0.9, 0.1, 
+                            f'Avg. Reward: {avg_reward:.2f}', 
+                            transform=axes[0].transAxes, 
+                            ha='right', va='top', 
+                            fontsize=15, fontweight='bold', color='black', 
+                            bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'))
             if 'Speed' in title:
                 axes[i].set_ylabel("Speed (m/s)", fontsize=15, fontweight='bold', color='black')
+                avg_speed = np.mean(values)
+                axes[1].text(0.9, 0.1, 
+                    f'Avg. Speed: {avg_speed:.2f}',
+                    transform=axes[1].transAxes, 
+                    ha='right', va='top', fontsize=15, fontweight='bold', color='black', 
+                    bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'))
             axes[i].grid(True, axis='y', linestyle='--', alpha=0.7)
+                    
+
             plt.setp(axes[i].get_xticklabels(), fontweight='bold')
             
             # Value labels on top of bars
@@ -208,7 +240,3 @@ class EvaluationManager:
         plt.savefig(save_path, dpi=300)
         print(f"Comparison plot saved to {save_path}")
         plt.close()
-
-    def ablation_study(self, agent_builder: Callable, config_variations: Dict[str, Dict], env, num_episodes=10):
-        # Placeholder for ablation study.
-        pass

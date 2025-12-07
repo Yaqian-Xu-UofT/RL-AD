@@ -6,10 +6,13 @@ from highway_env.vehicle.kinematics import Vehicle
 from agents.rule_based.agent import RuleBasedAgent
 from agents.evaluation import EvaluationManager
 
+from agents.custom.custom import NoisyObservationWrapper
+
+# Rule-Based Agent Evaluation Configuration
 config = {
     "observation": {
         "type": "Kinematics",
-        "vehicles_count": 25,
+        "vehicles_count": 15,
         "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
         "normalize": False,
         "absolute": True,
@@ -21,16 +24,15 @@ config = {
     "policy_frequency": 2,
     "vehicle_density": 1,
     "reward_speed_range": [20, 30],
-    # 朱厚森添加 ppo环境25辆车 这里给rule-based统一一下
     "vehicles_count": 25,
 }
 
-def eval_rule_based():
+def eval_rule_based(lccd=3, trt=1.2):
     env = gym.make("highway-v0", render_mode="human", config=config)
     
-    agent = RuleBasedAgent(env)
+    agent = RuleBasedAgent(env, lccd=lccd, trt=trt)
     eval_manager = EvaluationManager(save_dir="eval_results")
-    num_episodes = 2
+    num_episodes = 100
 
     print("Starting evaluation...")
     metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
@@ -42,8 +44,27 @@ def eval_rule_based():
     
     env.close()
 
+def eval_rule_based_w_noise(lccd=3, trt=1.2):
+    env = gym.make("highway-v0", render_mode="human", config=config)
+    env = NoisyObservationWrapper(env, normalize=False)
+    
+    agent = RuleBasedAgent(env, lccd=lccd, trt=trt)
+    eval_manager = EvaluationManager(save_dir="eval_results")
+    num_episodes = 100
+
+    print("Starting evaluation with noisy observations...")
+    metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
+    eval_manager.print_results(metrics)
+            
+    # Plot metrics
+    print("\nPlotting metrics...")
+    eval_manager.plot_metrics(metrics, title="Rule Based Agent Evaluation with Noise")
+    
+    env.close()
 
 def eval_two_rule_based_agents():
+    # Example configurations for two different rule-based agents
+    # Target speed set to 28 m/s and 30 m/s respectively
     env = gym.make("highway-v0", render_mode="human", config=config)
     
     agent1 = RuleBasedAgent(env, target_speed=28)
@@ -72,14 +93,6 @@ def eval_two_rule_based_agents():
 def eval_rule_based_and_sac():
     from stable_baselines3 import SAC
     import os
-    
-    # # Common scenario parameters
-    # common_config = {
-    #     "lanes_count": 4,
-    #     "duration": 60,
-    #     "vehicle_density": 1,
-    #     "offroad_terminal": True
-    # }
 
     eval_manager = EvaluationManager(save_dir="eval_results")
     num_episodes = 2
@@ -87,31 +100,39 @@ def eval_rule_based_and_sac():
     # Setup SAC Agent
     print("\n--- Setting up SAC Agent ---")
     sac_config = {
+        "lanes_count": 4,
+        "vehicles_density": 1.0,
+        "vehicles_count": 25,
+        "duration": 60,
+        "policy_frequency": 2,
+        "simulation_frequency": 15,
+        "speed_limit": 30,
+
         "action": {
             "type": "ContinuousAction",
             "longitudinal": True,
             "lateral": True,
-            "steering_range": [-np.deg2rad(15), np.deg2rad(15)],
+            "steering_range": [-np.deg2rad(10), np.deg2rad(10)],
+            "speed_range": [0, 30],
             "dynamical": True,
             "clip": True
         },
-        "lanes_count": 4,
-        "duration": 60,  # longer episode for overtaking
         "observation": {
             "type": "Kinematics",
-            "vehicles_count": 15,   # observe 15 vehicles around ego
+            "vehicles_count": 15,
             "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
             "normalize": True,
-            "absolute": False
+            "absolute": False,
+            "order": "sorted"
         },
-        "lane_change_reward": 1,  # reward for successful lane changes
-        "collision_reward": -0.1,   # TODO tune back to -1.0 after testing
-        "right_lane_reward": 0.0,   # encourage lane changing
-        "high_speed_reward": 2.5,
-        "reward_speed_range": [30, 35], # default [20, 30], ie [72, 108] km/h
-        "vehicle_density": 1, # denser traffic for overtaking
+        "lane_change_reward": 0.8,
+        "collision_reward": -2,
+        "right_lane_reward": 0.0,
+        "high_speed_reward": 1.2,
+        "reward_speed_range": [25, 30],
         "offroad_terminal": True,
-        "normalize_reward": False
+        "normalize_reward": True,
+        # "other_vehicles_type": "custom.CustomIDMVehicle",
     }
     
     env_sac = gym.make("highway-v0", render_mode="human", config=sac_config)
@@ -148,7 +169,6 @@ def eval_rule_based_and_sac():
         
     env_sac.close()
     env_rb.close()
-
 
 def eval_rule_based_and_ppo():
     from stable_baselines3 import PPO
@@ -208,6 +228,48 @@ def eval_rule_based_and_ppo():
     env_ppo.close()
     env_rb.close()
 
+def eval_ppo():
+    from stable_baselines3 import PPO
+    import os
+
+    ppo_config = {
+        "lanes_count": 4,
+        "duration": 60,  # longer episode for overtaking
+        "observation": {
+            "type": "Kinematics",
+            "vehicles_count": 10,   # observe 15 vehicles around ego
+            "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
+            "absolute": False,
+            "order": "sorted"
+        },
+        "policy_frequency": 2,
+        "vehicles_count": 25,
+    }
+    
+    env_ppo = gym.make("highway-v0", render_mode="rgb_array", config=ppo_config)
+
+    # Load model
+    model_path = "agents/ppo/save_models/11.29_penalty_2/model"
+    # model_path = "agents/ppo/save_models/12.1_penalty_3/model"
+    if not os.path.exists(model_path + ".zip") and not os.path.exists(model_path):
+        print(f"Warning: Model not found at {model_path}")
+        return
+
+    agent = PPO.load(model_path, env=env_ppo)
+    print("load succes")
+
+    eval_manager = EvaluationManager(save_dir="eval_results")
+    num_episodes = 1 #100
+
+    print("Starting evaluation...")
+    metrics = eval_manager.evaluate_agent(agent=agent, env=env_ppo, num_episodes=num_episodes)
+    eval_manager.print_results(metrics)
+            
+    # Plot metrics
+    print("\nPlotting metrics...")
+    eval_manager.plot_metrics(metrics, title="ppo Agent Evaluation")
+    
+    env_ppo.close()
 
 def eval_rule_based_and_dqn():
     from stable_baselines3 import DQN
@@ -269,9 +331,20 @@ def eval_rule_based_and_dqn():
 
 
 if __name__ == "__main__":
+    ## Rule-Based evaluation
+    ## Rule-Based specific parameters
+    ## See readme.md for details
+    lccd = 3
+    trt = 1.2
+    run = 1
+    print(f"\n=== Eval RB w. lccd={lccd} and trt={trt}: Run {run} ===")
+    eval_rule_based(lccd=lccd, trt=trt)
+    # eval_rule_based_w_noise(lccd=lccd, trt=trt)
     # eval_rule_based()
     # eval_two_rule_based_agents()
+
     # eval_rule_based_and_sac()
     # eval_rule_based_and_ppo()
     eval_rule_based_and_dqn()
 
+    # eval_ppo()

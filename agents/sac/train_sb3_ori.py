@@ -21,12 +21,14 @@ def train():
         "duration": 60,
         "policy_frequency": 2,
         "simulation_frequency": 15,
+        "speed_limit": 30,
 
         "action": {
             "type": "ContinuousAction",
             "longitudinal": True,
             "lateral": True,
             "steering_range": [-np.deg2rad(10), np.deg2rad(10)],
+            "speed_range": [0, 30],
             "dynamical": True,
             "clip": True
         },
@@ -41,10 +43,10 @@ def train():
         },
     
 
-        "lane_change_reward": 1,
-        "collision_reward": -0.1,
+        "lane_change_reward": 0.8,
+        "collision_reward": -2,
         "right_lane_reward": 0.0,
-        "high_speed_reward": 2.5,
+        "high_speed_reward": 1.2,
         "reward_speed_range": [25, 30],
         "offroad_terminal": True,
         "normalize_reward": False    # TODO
@@ -69,14 +71,14 @@ def train():
 
     # 3. Initialize SB3 SAC Agent
     model = SAC(
-        "MlpPolicy",
+        "MlpPolicy",    # ""
         env,
         device="cuda",
         verbose=1,      # Training information
         batch_size=1024,
         ent_coef="auto",    # Automatically tune entropy (exploration)
         buffer_size=1_000_000,    # buffer more transitions for better learning
-        learning_starts=200_000,  # collect more transitions with random policy before learning
+        learning_starts=20_000,  # collect more transitions with random policy before learning
         train_freq=64,   # every steps we do a training step
         gradient_steps=64, # how many gradient steps to do after each rollout 
         tau=0.005,          # target smoothing coefficient
@@ -84,7 +86,7 @@ def train():
         learning_rate=3e-4,
         tensorboard_log=tensorboard_log_dir
     )
-    # model.load("/home/yqxu/links/scratch/RL-AD/107283/checkpoints/sac_sb3_600000_steps.zip")
+    model.load("/home/yqxu/links/scratch/RL-AD/120489/checkpoints/sac_sb3_ori_1200000_steps.zip")
     print("Starting Training with SB3 SAC Agent (Multi-core)...")
 
 
@@ -98,7 +100,7 @@ def train():
     # 4. Training Loop
     # total_timesteps is the total number of steps to train across all environments
     model.learn(total_timesteps=1_600_000, progress_bar=True, callback=checkpoint_callback)   
-
+    # 1_600_000
     # 5. Save the model
     final_save_path = os.path.join(os.environ.get("CKPTDIR", "."), model_name + ".zip")
     model.save(final_save_path)
