@@ -1,279 +1,356 @@
-import functools
+import os
+import time
+from typing import Tuple
 
 import gymnasium as gym
 import numpy as np
-import pygame
-import seaborn as sns
 import torch
-import torch as th
 import torch.nn as nn
-from stable_baselines3 import PPO
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-from stable_baselines3.common.vec_env import SubprocVecEnv
-from torch.distributions import Categorical
+import torch.optim as optim
 from torch.nn import functional as F
 
-import highway_env  # noqa: F401
+
 from gymnasium.wrappers import RecordEpisodeStatistics, RecordVideo
-
+import highway_env
 from gymnasium import ObservationWrapper, Wrapper
-
-from highway_env.utils import lmap
-
-
-# ==================================
-#        Policy Architecture
-# ==================================
+from highway_env.road.lane import AbstractLane
+from highway_env.vehicle.behavior import IDMVehicle
+from highway_env.vehicle.kinematics import Vehicle
 
 
-def activation_factory(activation_type):
-    if activation_type == "RELU":
-        return F.relu
-    elif activation_type == "TANH":
-        return torch.tanh
-    elif activation_type == "ELU":
-        return nn.ELU()
+
+def make_env(env_id: str, seed: int = 0, config: dict = None):
+    def _init():
+        if config is None:
+            env = gym.make(env_id)
+        else:
+            env = gym.make(env_id, config=config)
+        obs, info = env.reset()
+        return env
+
+    return _init
+
+
+def flatten_obs(obs):
+    # Accepts obs being np.ndarray, list, or dict of arrays
+    if isinstance(obs, dict):
+        parts = []
+        for k in sorted(obs.keys()):
+            v = obs[k]
+            parts.append(np.array(v).ravel())
+        return np.concatenate(parts, axis=0)
     else:
-        raise ValueError(f"Unknown activation_type: {activation_type}")
+        return np.array(obs).ravel()
 
 
-class BaseModule(torch.nn.Module):
-    """
-    Base torch.nn.Module implementing basic features:
-        - initialization factory
-        - normalization parameters
-    """
-
-    def __init__(self, activation_type="RELU", reset_type="XAVIER"):
+class ActorCritic(nn.Module):
+    def __init__(self, obs_dim: int, action_dim: int, hidden_sizes=(256, 256)):
         super().__init__()
-        self.activation = activation_factory(activation_type)
-        self.reset_type = reset_type
+        layers = []
+        last = obs_dim
+        for h in hidden_sizes:
+            layers.append(nn.Linear(last, h))
+            layers.append(nn.ReLU())
+            last = h
+        self.shared = nn.Sequential(*layers)
 
-    def _init_weights(self, m):
-        if hasattr(m, "weight"):
-            if self.reset_type == "XAVIER":
-                torch.nn.init.xavier_uniform_(m.weight.data)
-            elif self.reset_type == "ZEROS":
-                torch.nn.init.constant_(m.weight.data, 0.0)
-            else:
-                raise ValueError("Unknown reset type")
-        if hasattr(m, "bias") and m.bias is not None:
-            torch.nn.init.constant_(m.bias.data, 0.0)
+        self.actor = nn.Sequential(nn.Linear(last, 128), nn.ReLU(), nn.Linear(128, action_dim))
+        self.critic = nn.Sequential(nn.Linear(last, 128), nn.ReLU(), nn.Linear(128, 1))
 
-    def reset(self):
-        self.apply(self._init_weights)
-
-
-class MultiLayerPerceptron(BaseModule):
-    def __init__(
-        self,
-        in_size=None,
-        layer_sizes=None,
-        reshape=True,
-        out_size=None,
-        activation="RELU",
-        is_policy=False,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.reshape = reshape
-        self.layer_sizes = layer_sizes or [64, 64]
-        self.out_size = out_size
-        self.activation = activation_factory(activation)
-        self.is_policy = is_policy
-        self.softmax = nn.Softmax(dim=-1)
-        sizes = [in_size] + self.layer_sizes
-        layers_list = [nn.Linear(sizes[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
-        self.layers = nn.ModuleList(layers_list)
-        if out_size:
-            self.predict = nn.Linear(sizes[-1], out_size)
-
-    def forward(self, x):
-        if self.reshape:
-            x = x.reshape(x.shape[0], -1)  # We expect a batch of vectors
-        for layer in self.layers:
-            x = self.activation(layer(x.float()))
-        if self.out_size:
-            x = self.predict(x)
-        if self.is_policy:
-            action_probs = self.softmax(x)
-            dist = Categorical(action_probs)
-            return dist
-        return x
-
-    def action_scores(self, x):
-        if self.is_policy:
-            if self.reshape:
-                x = x.reshape(x.shape[0], -1)  # We expect a batch of vectors
-            for layer in self.layers:
-                x = self.activation(layer(x.float()))
-            if self.out_size:
-                action_scores = self.predict(x)
-            return action_scores
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        shared = self.shared(x)
+        logits = self.actor(shared)
+        value = self.critic(shared).squeeze(-1)
+        return logits, value
 
 
-class EgoAttention(BaseModule):
-    def __init__(self, feature_size=64, heads=4, dropout_factor=0):
-        super().__init__()
-        self.feature_size = feature_size
-        self.heads = heads
-        self.dropout_factor = dropout_factor
-        self.features_per_head = int(self.feature_size / self.heads)
+class PPOBuffer:
+    """On-policy rollout buffer for PPO with GAE-Lambda."""
 
-        self.value_all = nn.Linear(self.feature_size, self.feature_size, bias=False)
-        self.key_all = nn.Linear(self.feature_size, self.feature_size, bias=False)
-        self.query_ego = nn.Linear(self.feature_size, self.feature_size, bias=False)
-        self.attention_combine = nn.Linear(
-            self.feature_size, self.feature_size, bias=False
-        )
+    def __init__(self, obs_dim, size, n_envs, gamma=0.99, lam=0.95, device='cpu'):
+        self.obs_buf = np.zeros((size * n_envs, obs_dim), dtype=np.float32)
+        self.act_buf = np.zeros((size * n_envs,), dtype=np.int64)
+        self.adv_buf = np.zeros((size * n_envs,), dtype=np.float32)
+        self.rew_buf = np.zeros((size * n_envs,), dtype=np.float32)
+        self.ret_buf = np.zeros((size * n_envs,), dtype=np.float32)
+        self.val_buf = np.zeros((size * n_envs,), dtype=np.float32)
+        self.logp_buf = np.zeros((size * n_envs,), dtype=np.float32)
+        self.ptr = 0
+        self.path_start_idx = 0
+        self.max_size = size * n_envs
+        self.gamma = gamma
+        self.lam = lam
+        self.device = device
 
-    @classmethod
-    def default_config(cls):
-        return {}
+    def store(self, obs, act, rew, val, logp):
+        assert self.ptr < self.max_size
+        self.obs_buf[self.ptr] = obs
+        self.act_buf[self.ptr] = act
+        self.rew_buf[self.ptr] = rew
+        self.val_buf[self.ptr] = val
+        self.logp_buf[self.ptr] = logp
+        self.ptr += 1
 
-    def forward(self, ego, others, mask=None):
-        batch_size = others.shape[0]
-        n_entities = others.shape[1] + 1
-        input_all = torch.cat(
-            (ego.view(batch_size, 1, self.feature_size), others), dim=1
-        )
-        # Dimensions: Batch, entity, head, feature_per_head
-        key_all = self.key_all(input_all).view(
-            batch_size, n_entities, self.heads, self.features_per_head
-        )
-        value_all = self.value_all(input_all).view(
-            batch_size, n_entities, self.heads, self.features_per_head
-        )
-        query_ego = self.query_ego(ego).view(
-            batch_size, 1, self.heads, self.features_per_head
-        )
+    def finish_path(self, last_val=0):
+        # compute GAE-Lambda advantage and rewards-to-go
+        path_slice = slice(self.path_start_idx, self.ptr)
+        rews = np.append(self.rew_buf[path_slice], last_val)
+        vals = np.append(self.val_buf[path_slice], last_val)
 
-        # Dimensions: Batch, head, entity, feature_per_head
-        key_all = key_all.permute(0, 2, 1, 3)
-        value_all = value_all.permute(0, 2, 1, 3)
-        query_ego = query_ego.permute(0, 2, 1, 3)
-        if mask is not None:
-            mask = mask.view((batch_size, 1, 1, n_entities)).repeat(
-                (1, self.heads, 1, 1)
-            )
-        value, attention_matrix = attention(
-            query_ego, key_all, value_all, mask, nn.Dropout(self.dropout_factor)
-        )
-        result = (
-            self.attention_combine(value.reshape((batch_size, self.feature_size)))
-            + ego.squeeze(1)
-        ) / 2
-        return result, attention_matrix
+        # GAE-Lambda
+        deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
+        adv = discount_cumsum(deltas, self.gamma * self.lam)
+        self.adv_buf[path_slice] = adv
 
+        # compute rewards-to-go
+        ret = discount_cumsum(rews, self.gamma)[:-1]
+        self.ret_buf[path_slice] = ret
 
-class EgoAttentionNetwork(BaseModule):
-    def __init__(
-        self,
-        in_size=None,
-        out_size=None,
-        presence_feature_idx=0,
-        embedding_layer_kwargs=None,
-        attention_layer_kwargs=None,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.out_size = out_size
-        self.presence_feature_idx = presence_feature_idx
-        embedding_layer_kwargs = embedding_layer_kwargs or {}
-        if not embedding_layer_kwargs.get("in_size", None):
-            embedding_layer_kwargs["in_size"] = in_size
-        self.ego_embedding = MultiLayerPerceptron(**embedding_layer_kwargs)
-        self.embedding = MultiLayerPerceptron(**embedding_layer_kwargs)
+        self.path_start_idx = self.ptr
 
-        attention_layer_kwargs = attention_layer_kwargs or {}
-        self.attention_layer = EgoAttention(**attention_layer_kwargs)
+    def get(self):
+        assert self.ptr == self.max_size, "Buffer has to be full before you can get()"
+        self.ptr = 0
+        self.path_start_idx = 0
+        # normalize advantages
+        adv_mean = np.mean(self.adv_buf)
+        adv_std = np.std(self.adv_buf) + 1e-8
+        self.adv_buf = (self.adv_buf - adv_mean) / adv_std
 
-    def forward(self, x):
-        ego_embedded_att, _ = self.forward_attention(x)
-        return ego_embedded_att
-
-    def split_input(self, x, mask=None):
-        # Dims: batch, entities, features
-        if len(x.shape) == 2:
-            x = x.unsqueeze(axis=0)
-        ego = x[:, 0:1, :]
-        others = x[:, 1:, :]
-        if mask is None:
-            aux = self.presence_feature_idx
-            mask = x[:, :, aux : aux + 1] < 0.5
-        return ego, others, mask
-
-    def forward_attention(self, x):
-        ego, others, mask = self.split_input(x)
-        ego = self.ego_embedding(ego)
-        others = self.embedding(others)
-        return self.attention_layer(ego, others, mask)
-
-    def get_attention_matrix(self, x):
-        _, attention_matrix = self.forward_attention(x)
-        return attention_matrix
+        data = dict(obs=self.obs_buf.copy(), act=self.act_buf.copy(), ret=self.ret_buf.copy(), adv=self.adv_buf.copy(), logp=self.logp_buf.copy())
+        return {k: torch.as_tensor(v, dtype=torch.float32, device=self.device) for k, v in data.items()}
 
 
-def attention(query, key, value, mask=None, dropout=None):
-    """
-    Compute a Scaled Dot Product Attention.
-
-    Parameters
-    ----------
-    query
-        size: batch, head, 1 (ego-entity), features
-    key
-        size: batch, head, entities, features
-    value
-        size: batch, head, entities, features
-    mask
-        size: batch,  head, 1 (absence feature), 1 (ego-entity)
-    dropout
-
-    Returns
-    -------
-    The attention softmax(QK^T/sqrt(dk))V
-    """
-    d_k = query.size(-1)
-    scores = torch.matmul(query, key.transpose(-2, -1)) / np.sqrt(d_k)
-    if mask is not None:
-        scores = scores.masked_fill(mask, -1e9)
-    p_attn = F.softmax(scores, dim=-1)
-    if dropout is not None:
-        p_attn = dropout(p_attn)
-    output = torch.matmul(p_attn, value)
-    return output, p_attn
+def discount_cumsum(x, discount):
+    """Compute discounted cumulative sums of vectors."""
+    out = np.zeros_like(x)
+    running = 0
+    for i in reversed(range(len(x))):
+        running = x[i] + discount * running
+        out[i] = running
+    return out
 
 
-attention_network_kwargs = dict(
-    in_size=5 * 15,
-    embedding_layer_kwargs={"in_size": 7, "layer_sizes": [64, 64], "reshape": False},
-    attention_layer_kwargs={"feature_size": 64, "heads": 2},
-)
+def compute_logp_and_action(pi_logits: torch.Tensor, actions: torch.Tensor):
+    # discrete actions
+    dist = torch.distributions.Categorical(logits=pi_logits)
+    logp = dist.log_prob(actions)
+    return logp, dist
 
 
-class CustomExtractor(BaseFeaturesExtractor):
-    """
-    :param observation_space: (gym.Space)
-    :param features_dim: (int) Number of features extracted.
-        This corresponds to the number of unit for the last layer.
-    """
-
-    def __init__(self, observation_space: gym.spaces.Box, **kwargs):
-        super().__init__(
-            observation_space,
-            features_dim=kwargs["attention_layer_kwargs"]["feature_size"],
-        )
-        self.extractor = EgoAttentionNetwork(**kwargs)
-
-    def forward(self, observations: th.Tensor) -> th.Tensor:
-        return self.extractor(observations)
 
 
-# ==================================
-#     Environment configuration
-# ==================================
+def train(
+    env_id='highway-v0',
+    config=None,
+    seed=0,
+    n_envs=8,
+    steps_per_env=128,
+    total_timesteps=200_000,
+    lr=5e-4,
+    clip_ratio=0.2,
+    train_iters=80,
+    minibatch_size=64,
+    gamma=0.8,
+    lam=0.95,
+    vf_coef=0.5,
+    ent_coef=0,
+    max_grad_norm=0.5,
+    device='cpu',
+    save_path='ppo_highway.pth',
+    model = None
+):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    # create vectorized envs
+    env_fns = [make_env(env_id, seed + i, config) for i in range(n_envs)]
+    envs = gym.vector.AsyncVectorEnv(env_fns)
+
+    obs0, _ = envs.reset()
+    obs_flat0 = flatten_obs(obs0[0])
+    obs_dim = flatten_obs(obs0[0]).shape[0]
+    action_dim = envs.single_action_space.n
+
+    if not model:
+        model = ActorCritic(obs_dim, action_dim).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    rollout_len = steps_per_env
+    buf = PPOBuffer(obs_dim, rollout_len, n_envs, gamma=gamma, lam=lam, device=device)
+
+    obs = obs0
+    ep_return = np.zeros(n_envs)
+    ep_len = np.zeros(n_envs, dtype=int)
+
+    num_updates = total_timesteps // (n_envs * rollout_len)
+    print(f"Training for {total_timesteps} timesteps, {num_updates} updates")
+
+    global_step = 0
+    start_time = time.time()
+    for update in range(num_updates):
+        for step in range(rollout_len):
+            obs_flat = np.stack([flatten_obs(o) for o in obs], axis=0)
+            obs_t = torch.from_numpy(obs_flat.astype(np.float32)).to(device)
+
+            with torch.no_grad():
+                logits, values = model(obs_t)
+                dist = torch.distributions.Categorical(logits=logits)
+                actions = dist.sample()
+                logp = dist.log_prob(actions)
+
+            actions_np = actions.cpu().numpy()
+            next_obs, rewards, dones, truncs, infos = envs.step(actions_np)
+
+            # store per-env
+            for i in range(n_envs):
+                buf.store(obs_flat[i], actions_np[i], rewards[i], float(values[i].cpu().numpy()), float(logp[i].cpu().numpy()))
+
+            ep_return += rewards
+            ep_len += 1
+            for i, d in enumerate(dones):
+                if d:
+                    # terminal
+                    last_val = 0.0
+                    buf.finish_path(last_val)
+                    ep_return[i] = 0
+                    ep_len[i] = 0
+            for i, t in enumerate(truncs):
+                if t:
+                    # truncated episode: bootstrap value
+                    obs_i_flat = flatten_obs(next_obs[i])
+                    obs_i_t = torch.from_numpy(obs_i_flat.astype(np.float32)).unsqueeze(0).to(device)
+                    with torch.no_grad():
+                        _, last_val_t = model(obs_i_t)
+                        last_val = last_val_t.item()
+                    buf.finish_path(last_val)
+                    ep_return[i] = 0
+                    ep_len[i] = 0
+
+            obs = next_obs
+            global_step += n_envs
+
+        # If some trajectories didn't finish, bootstrap their values
+        # compute last values for each parallel env
+        obs_flat = np.stack([flatten_obs(o) for o in obs], axis=0)
+        obs_t = torch.from_numpy(obs_flat.astype(np.float32)).to(device)
+        with torch.no_grad():
+            _, last_vals = model(obs_t)
+        for v in last_vals.cpu().numpy():
+            buf.finish_path(float(v))
+
+        data = buf.get()
+
+        policy_losses = []
+        value_losses = []
+        entropies = []
+
+        # PPO update
+        for it in range(train_iters):
+            # create minibatches
+            idxs = np.arange(len(data['obs']))
+            np.random.shuffle(idxs)
+            for start in range(0, len(idxs), minibatch_size):
+                mb_idx = idxs[start:start + minibatch_size]
+                mb = {k: v[mb_idx] for k, v in data.items()}
+
+                logits, values = model(mb['obs'])
+                logp_new, dist = compute_logp_and_action(logits, mb['act'].long())
+
+                ratio = torch.exp(logp_new - mb['logp'])
+                surr1 = ratio * mb['adv']
+                surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * mb['adv']
+                policy_loss = -torch.min(surr1, surr2).mean()
+
+                value_loss = ((mb['ret'] - values) ** 2).mean()
+
+                entropy = dist.entropy().mean()
+
+                loss = policy_loss + vf_coef * value_loss - ent_coef * entropy
+
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                optimizer.step()
+
+                policy_losses.append(policy_loss.item())
+                value_losses.append(value_loss.item())
+                entropies.append(entropy.item())
+
+        mean_policy_loss = float(np.mean(policy_losses)) if policy_losses else 0.0
+        mean_value_loss = float(np.mean(value_losses)) if value_losses else 0.0
+        mean_entropy = float(np.mean(entropies)) if entropies else 0.0
+
+
+        elapsed = time.time() - start_time
+        print(f"Update {update+1}/{num_updates} | steps {global_step}/{total_timesteps} | time {elapsed:.1f}s | "
+              f"policy_loss {mean_policy_loss:.4f} | value_loss {mean_value_loss:.4f} | entropy {mean_entropy:.4f} ")
+
+
+
+        if (update + 1) % 50 == 0:
+            # save
+            torch.save(model.state_dict(), save_path)
+
+            avg_reward = evaluate_policy(update+1, model, episodes=1, video_folder="Save_gpt/highway-v0")
+            print("Average evaluation reward:", avg_reward)
+
+    print("Training finished")
+    torch.save(model.state_dict(), save_path)
+
+def evaluate_policy(update, model, episodes=3, video_folder="eval_videos"):
+    os.makedirs(video_folder, exist_ok=True)
+    config = {
+        "observation": {
+            "type": "Kinematics",
+            "vehicles_count": 10,
+            "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
+            "absolute": False,
+            "order": "sorted",
+        },
+        "action": {"type": "DiscreteMetaAction"},
+        "lanes_count": 3,
+        "vehicles_count": 15,
+        "policy_frequency": 2,
+        "duration": 100,
+ 
+    }
+    folder = f"{video_folder}_{update}"
+
+    # create env with video recording
+    env = gym.make("highway-v0", render_mode="rgb_array", config=config)
+    env = RecordVideo(
+        env,
+        video_folder=folder,
+        name_prefix="eval",
+        episode_trigger=lambda ep: True,
+    )
+    env = RecordEpisodeStatistics(env)
+
+
+    total_rew = 0.0
+
+
+    for ep in range(episodes):
+        obs, info = env.reset()
+        done = False
+        truncated = False
+        ep_rew = 0.0
+        while not (done or truncated):
+            obs_flat = flatten_obs(obs)
+            obs_t = torch.from_numpy(obs_flat.astype(np.float32)).unsqueeze(0).to(next(model.parameters()).device)
+            with torch.no_grad():
+                logits, _ = model(obs_t)
+                action = torch.argmax(logits, dim=-1).item()
+            obs, reward, done, truncated, info = env.step(action)
+            ep_rew += float(reward)
+        total_rew += ep_rew
+
+
+    env.close()
+    return total_rew / episodes
+
+
 
 class CustomRewardWrapper(Wrapper):
     def step(
@@ -305,14 +382,13 @@ class CustomRewardWrapper(Wrapper):
         return obs, reward, done, truncated, info
 
 class NoisyObservationWrapper(ObservationWrapper):
-    def __init__(self, env, speed_std=0.1, dist_std=0.1):
+    def __init__(self, env):
         super().__init__(env)
-        self.speed_std = speed_std
-        self.dist_std = dist_std
 
     def observation(self, observation):
         # Add noise to positions (distance) and velocities (speed) of each vehicle
-        scale = [0, 0.01, 0.05, 0.03, 0, 0, 0]
+        scale = [0, 0.00125, 0.015625, 0.005, 0, 0, 0]
+        #  [0.       0.00125  0.015625 0.005    0.       0.       0.      ]
 
         noise = self.env.unwrapped.np_random.normal(
             loc=0.0, 
@@ -320,11 +396,23 @@ class NoisyObservationWrapper(ObservationWrapper):
             size=observation.shape
         )
         return (observation + noise).astype(np.float32)
+    
+
+# below is the code of using Stable Baseline 3 
+# reference: https://github.com/Farama-Foundation/HighwayEnv/blob/master/scripts/sb3_highway_ppo.py
+
+
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from stable_baselines3.common.vec_env import SubprocVecEnv
+from torch.distributions import Categorical
+
 
 def make_configure_env(**kwargs):
     env = gym.make(kwargs["id"], config=kwargs["config"])
-    # env = CustomRewardWrapper(env)
-    env = NoisyObservationWrapper(env, speed_std=0, dist_std=0)
+    env = CustomRewardWrapper(env)
+    # env = NoisyObservationWrapper(env)
     env.reset()
     return env
 
@@ -349,90 +437,46 @@ env_kwargs = {
 }
 
 
-# ==================================
-#        Display attention matrix
-# ==================================
+if __name__ == '__main__':
+
+    # config = {
+    #     "observation": {
+    #         "type": "Kinematics",
+    #         "vehicles_count": 10,
+    #         "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
+    #         "absolute": False,
+    #         "order": "sorted",
+    #     },
+    #     "action": {"type": "DiscreteMetaAction"},
+    #     "lanes_count": 4,
+    #     "vehicles_count": 25,
+    #     "policy_frequency": 2,
+    #     "duration": 60,
+ 
+    # }
+
+    # env = gym.make("highway-v0", config=config)
+    # model = ActorCritic(flatten_obs(env.reset()[0]).shape[0], env.action_space.n)
+    # model.load_state_dict(torch.load('Save/ppo_highway_11.19.23.pth', map_location='cpu'))
+    # env.close()
+    # train(env_id="highway-v0", config=config, seed=0, n_envs=8, steps_per_env=96, total_timesteps=800000, device="cpu", 
+    #       model = model
+    #       )
+
+    # # Evaluate after training
+    # env = gym.make("highway-v0", render_mode="rgb_array", config=config)
+    # model = ActorCritic(flatten_obs(env.reset()[0]).shape[0], env.action_space.n).to('cpu')
+    # model.load_state_dict(torch.load('Save/ppo_highway_11.19.23.pth', map_location='cpu'))
 
 
-def display_vehicles_attention(
-    agent_surface, sim_surface, env, model, min_attention=0.01
-):
-    v_attention = compute_vehicles_attention(env, model)
-    for head in range(list(v_attention.values())[0].shape[0]):
-        attention_surface = pygame.Surface(sim_surface.get_size(), pygame.SRCALPHA)
-        for vehicle, attention in v_attention.items():
-            if attention[head] < min_attention:
-                continue
-            width = attention[head] * 5
-            desat = np.clip(lmap(attention[head], (0, 0.5), (0.7, 1)), 0.7, 1)
-            colors = sns.color_palette("dark", desat=desat)
-            color = np.array(colors[(2 * head) % (len(colors) - 1)]) * 255
-            color = (
-                *color,
-                np.clip(lmap(attention[head], (0, 0.5), (100, 200)), 100, 200),
-            )
-            if vehicle is env.vehicle:
-                pygame.draw.circle(
-                    attention_surface,
-                    color,
-                    sim_surface.vec2pix(env.vehicle.position),
-                    max(sim_surface.pix(width / 2), 1),
-                )
-            else:
-                pygame.draw.line(
-                    attention_surface,
-                    color,
-                    sim_surface.vec2pix(env.vehicle.position),
-                    sim_surface.vec2pix(vehicle.position),
-                    max(sim_surface.pix(width), 1),
-                )
-        sim_surface.blit(attention_surface, (0, 0))
+    # avg_reward = evaluate_policy(0, model, episodes=3, video_folder="eval_videos")
+    # print("Average evaluation reward:", avg_reward)
 
-
-def compute_vehicles_attention(env, model):
-    obs = env.unwrapped.observation_type.observe()
-    obs_t = torch.tensor(obs[None, ...], dtype=torch.float)
-    attention = model.policy.features_extractor.extractor.get_attention_matrix(obs_t)
-    attention = attention.squeeze(0).squeeze(1).detach().cpu().numpy()
-    ego, others, mask = model.policy.features_extractor.extractor.split_input(obs_t)
-    mask = mask.squeeze()
-    v_attention = {}
-    obs_type = env.observation_type
-    if hasattr(obs_type, "agents_observation_types"):  # Handle multi-agent observation
-        obs_type = obs_type.agents_observation_types[0]
-    for v_index in range(obs.shape[0]):
-        if mask[v_index]:
-            continue
-        v_position = {}
-        for feature in ["x", "y"]:
-            v_feature = obs[v_index, obs_type.features.index(feature)]
-            v_feature = lmap(v_feature, [-1, 1], obs_type.features_range[feature])
-            v_position[feature] = v_feature
-        v_position = np.array([v_position["x"], v_position["y"]])
-        if not obs_type.absolute and v_index > 0:
-            v_position += env.unwrapped.vehicle.position
-        vehicle = min(
-            env.unwrapped.road.vehicles,
-            key=lambda v: np.linalg.norm(v.position - v_position),
-        )
-        v_attention[vehicle] = attention[:, v_index]
-    return v_attention
-
-
-# ==================================
-#        Main script
-# ==================================
-
-if __name__ == "__main__":
     # train = True
     train = False
 
     if train:
         n_cpu = 8
-        policy_kwargs = dict(
-            features_extractor_class=CustomExtractor,
-            features_extractor_kwargs=attention_network_kwargs,
-        )
         env = make_vec_env(
             make_configure_env,
             n_envs=n_cpu,
@@ -445,19 +489,18 @@ if __name__ == "__main__":
             env,
             n_steps=512 // n_cpu,
             batch_size=64,
-            learning_rate=2e-3,
-            policy_kwargs=policy_kwargs,
+            learning_rate=5e-4,
             verbose=2,
-            tensorboard_log="training_model/",
+            tensorboard_log="agents/ppo/training_model/",
             gamma=0.8,
         )
-        # model = PPO.load("training_model/model", env=env)
+        model = PPO.load("agents/ppo/save_models/11.29_penalty_2/model", env=env, tensorboard_log="agents/ppo/training_model/")
         # Train the agent
-        model.learn(total_timesteps=100000)
+        model.learn(total_timesteps=200000)
         # Save the agent
-        model.save("training_model/model")
+        model.save("agents/ppo/training_model/model")
 
-    model = PPO.load("save_models/11.29_penalty_2/model")
+    model = PPO.load("agents/ppo/save_models/11.29_penalty_2/model")
     env = gym.make("highway-v0", render_mode="rgb_array", config=env_kwargs["config"])
     # env = NoisyObservationWrapper(env, speed_std=0, dist_std=0)
 
