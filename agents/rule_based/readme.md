@@ -1,22 +1,22 @@
-# Video save directory: /initial_demo/highway-v0/rule_based-episode-0.mp4
-Basics:
+# Rule-Based Agent
+## Basics
 1. Rule-Based Agent takes in unnormalized observation data.
 2. The system framework is similar to the perception and decision layers in a typical L2+ autopilot system, corresponding to two blocks within the code: Safety Estimation and Decision Making. 
 3. The Decision Making block can be further divided into two sets of decision logics for actively overtaking and safety. Please check project report and code for details. 
 
-Decision Logics: 
+## Decision Logics
 1. For every car observed, update safety distances, gaps, and lane availability.
 2. Decide if left / right lane is free and probable to change lane.
 3. Change lane when current x distance is less than minimum or other left right lanes are clearer.
 4. Otherwise cruise at target speed.
 
-Additional Details: 
+## Additional Details
 1. Lane change cooldown to avoid constant lane changing behaviours.
 2. Front safe distance changing with agent speed, and increases in a few steps immediately after lane changing. (important)
 3. Dynamic and static lane change conditions. 
 4. Added _act_hy_safe_rule() to perform minimum safety check for potential hybrid (RL+rule-based) autopilot setup. 
 
-Key Parameters: 
+## Key Parameters
 1. target_speed: cruise target speed. Default is 30m/s.
 2. lccd: lane change cooldown. Minimum steps between lane changes to mitigate oscillating between lanes. Default is 5.
 3. trt: target react time. Default is 1.2s. 
