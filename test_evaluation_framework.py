@@ -254,10 +254,10 @@ def eval_ppo():
         return
 
     agent = PPO.load(model_path, env=env_ppo)
-    
+    print("load succes")
 
     eval_manager = EvaluationManager(save_dir="eval_results")
-    num_episodes = 100
+    num_episodes = 1 #100
 
     print("Starting evaluation...")
     metrics = eval_manager.evaluate_agent(agent=agent, env=env_ppo, num_episodes=num_episodes)
@@ -270,14 +270,14 @@ def eval_ppo():
     env_ppo.close()
 
 if __name__ == "__main__":
-    # lccd = 3
-    # trt = 1.2
-    # for run in range(2):
-    #     print(f"\n=== Eval RB w. lccd={lccd} and trt={trt}: Run {run + 1} ===")
-    #     # eval_rule_based(lccd=lccd, trt=trt)
-    #     eval_rule_based_w_noise(lccd=lccd, trt=trt)
+    lccd = 3
+    trt = 1.2
+    for run in range(2):
+        print(f"\n=== Eval RB w. lccd={lccd} and trt={trt}: Run {run + 1} ===")
+        # eval_rule_based(lccd=lccd, trt=trt)
+        eval_rule_based_w_noise(lccd=lccd, trt=trt)
     # eval_rule_based()
     # eval_two_rule_based_agents()
     # eval_rule_based_and_sac()
     # eval_rule_based_and_ppo()
-    eval_ppo()
+    # eval_ppo()

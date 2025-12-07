@@ -49,22 +49,21 @@ class EvaluationManager:
             while not (done or truncated):
                 # Handle both SB3 agents and simple rule-based agents
                 if hasattr(agent, "predict"):
-                    action, _ = agent.predict(obs, deterministic=True) # SB3-style agent
+                    action, _ = agent.predict(obs, deterministic=True) # SB3 agent
                 elif hasattr(agent, "act"):
-                    action = agent.act(obs, episode=episode)  # Agent with act method
+                    action = agent.act(obs, episode=episode)  # RB agent
                 else:
-                    action = agent(obs) 
+                    return None
                 
                 obs, reward, done, truncated, info = env.step(action)
                 
                 episode_reward += reward
                 episode_length += 1
                 
-                # Collect speed if available in info
-                if "speed" in info:
-                    episode_speeds.append(info["speed"])
+                # Check speed info
+                episode_speeds.append(info.get("speed", 0))
                 
-                # Check for specific events in info
+                # Check for collision
                 if info.get("crashed", False):
                     metrics.collisions += 1
                     print(f"Collision detected in episode {episode + 1}.")
@@ -184,15 +183,11 @@ class EvaluationManager:
         return compare_results
 
     def plot_comparison(self, results: Dict[str, EvaluationMetrics]):
-        """
-        Plot comparison between agents.
-        """
         # Set font to Arial
         plt.rcParams['font.family'] = 'Arial'
         plt.rcParams['font.size'] = 12
 
         agents = list(results.keys())
-        # Map Plot Title -> Metric Attribute Name
         metrics_map = {
             "Overall Average Reward": "overall_avg_reward",
             "Collision Rate": "collision_rate",
@@ -245,7 +240,3 @@ class EvaluationManager:
         plt.savefig(save_path, dpi=300)
         print(f"Comparison plot saved to {save_path}")
         plt.close()
-
-    def ablation_study(self, agent_builder: Callable, config_variations: Dict[str, Dict], env, num_episodes=10):
-        # Placeholder for ablation study.
-        pass

@@ -205,7 +205,7 @@ class RuleBasedAgent:
 
         disp_safety_gap = "[" + ", ".join([f"{x:.2f}" for x in safety_gap]) + "]"
 
-        ## Disabled when testing multiple runs
+        # # Disabled when testing multiple runs
         # print(f"Episode: {episode} "
         #       f"Front dist: {dist_cur_lane:<7.2f} "
         #       f"FNT safe: {FRONT_SAFE_DIST:<7.2f} "

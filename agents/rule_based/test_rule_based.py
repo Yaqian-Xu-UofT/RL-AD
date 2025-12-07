@@ -10,15 +10,36 @@ import highway_env
 from gymnasium.wrappers import RecordEpisodeStatistics, RecordVideo
 from highway_env.vehicle.kinematics import Vehicle
 from agents.rule_based.agent import RuleBasedAgent
+from gymnasium import ObservationWrapper, Wrapper
 
+
+
+class NoisyObservationWrapper(ObservationWrapper):
+    def __init__(self, env, speed_std=0.1, dist_std=0.1):
+        super().__init__(env)
+        self.speed_std = speed_std
+        self.dist_std = dist_std
+
+    def observation(self, observation):
+        # Add noise to positions (distance) and velocities (speed) of each vehicle
+        scale = [0, 0.01, 0.05, 0.03, 0, 0, 0]
+
+        noise = self.env.unwrapped.np_random.normal(
+            loc=0.0, 
+            scale=scale, 
+            size=observation.shape
+        )
+        return (observation + noise).astype(np.float32)
+
+def make_configure_env(**kwargs):
+    env = gym.make(kwargs["id"], config=kwargs["config"])
+    # env = CustomRewardWrapper(env)
+    env = NoisyObservationWrapper(env, speed_std=0, dist_std=0)
+    env.reset()
+    return env
 
 
 env_name = "highway-v0"
-
-# # Set up logging for episode statistics
-# logging.basicConfig(level=logging.INFO, format='%(message)s')
-
-# Create environment with periodic video recording
 
 config = {
     "observation": {
@@ -32,20 +53,14 @@ config = {
     "duration": 60,
     "lane_count": 4,
     "simulation_frequency": 15,
-    "policy_frequency": 3,
-    "vehicle_density": 1.5, # denser traffic for overtaking
-    "reward_speed_range": [20, 30], # Speed range for maximum reward (in m/s). Default is [20, 30].
-    "speed_limit": 30, # Speed limit for the road (m/s). Other vehicles will drive around this speed.
-    "action": {
-        "type": "DiscreteMetaAction",
-        # "target_speeds": np.linspace(15, 40, num=26), # The agent will choose from these target speeds (m/s).
-    }
+    "policy_frequency": 2,
+    "vehicle_density": 1,
+    "reward_speed_range": [20, 30],
+    "vehicles_count": 25
 }
 
 
 if __name__ == "__main__":
-    # # Set max speed of vehicles in the environment (default 40 m/s)
-    # Vehicle.MAX_SPEED = 40  
     env = gym.make("highway-v0", render_mode="rgb_array", config=config)
 
     # Record videos 
@@ -59,12 +74,12 @@ if __name__ == "__main__":
     # Track statistics for every episode
     env = RecordEpisodeStatistics(env)
 
-    agent = RuleBasedAgent(env, target_speed=40)
+    agent = RuleBasedAgent(env, target_speed=30)
 
     obs, info = env.reset()
     done = truncated = False
     total_reward = 0
-    
+
     # Run a single episode
     while not (done or truncated):
         action = agent.act(obs)
