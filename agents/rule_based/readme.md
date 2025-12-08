@@ -3,6 +3,8 @@
 ## Folder Structure Overview
 agents/rule_based/
 │
+├── videos # Directory to save test run videos
+│ └── rule_based-episode-0.mp4 # A test run of Rule-Based agent
 ├── agent.py  # Rule-Based agent code
 ├── init_test_rule_based.py # Script to run and test rule-based agent
 ├── videos/ # Video output directory
@@ -19,8 +21,8 @@ agents/rule_based/
 4. Otherwise cruise at target speed.
 
 ## Additional Details
-1. Lane change cooldown to avoid constant lane changing behaviours.
-2. Front safe distance changing with agent speed, and increases in a few steps immediately after lane changing. (important)
+1. Implemented lane change cooldown logic to avoid constant lane changing behaviours.
+2. Front safe distance changing with agent speed, and increases in a few steps immediately after lane changing. (IMPORTANT)
 3. Dynamic and static lane change conditions. 
 4. Added _act_hy_safe_rule() to perform minimum safety check for potential hybrid (RL+rule-based safety check) autonomous driving setup. 
 
@@ -30,5 +32,7 @@ agents/rule_based/
 3. trt: target react time. Default is 1.2s. 
 
 ## Others
-1. Test scripts available at RL-AD/test_evaluation_framework.py, including comparisons with DQN and PPO agents.
-2. Scripts for comparisons with SAC agent are available at RL-AD/agents/sac . 
+1. A simple test script that saves an example demo video is at **`RL-AD/agents/rule_based/init_test_rule_based.py`**
+2. The evaluation script is at **`RL-AD/test_evaluation_framework.py`**, including comparisons with the DQN agent.
+3. 2025/12/06 Update: evaluation scripts for comparisons with SAC and PPO agent are available at **`RL-AD/agents/sac`** and **`RL-AD/agents/ppo`**. 
+4. More demo videos are saved in the **`RL-AD/demo/`** folder for visual inspection of agent behavior.
