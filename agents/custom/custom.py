@@ -27,10 +27,8 @@ class NoisyObservationWrapper(ObservationWrapper):
     def observation(self, observation):
         # Add noise to positions (distance) and velocities (speed) of each vehicle
         # Update: condition on normalize
-        # Original scale = [0, 0.01, 0.05, 0.03, 0, 0, 0]
-        # scale = [0, 0.5, 0.5, 2.4, 0, 0, 0]
+        # Below is the unnormalized noise
         scale = [0, 0.25, 0.25, 0.4, 0, 0, 0]
-        # scale = [0, 0.01/2*0.5, 0.05/0.8*0.5, 0.01/2*0.5/0.5, 0.05/0.8*0.5*(1.414/0.5), 0, 0]
         if self.normalize:
             scale = self.normalize_noise(scale) 
             # print("Normalized noise scale:", scale)
@@ -117,6 +115,10 @@ class SpeedRewardWrapper(Wrapper):
 
 # from Benjamin's implementation
 class SafetyRewardWrapper(Wrapper):
+    def __init__(self, env, mid_lane_reward=False):
+        super().__init__(env)
+        self.mid_lane_reward = mid_lane_reward
+
     def step(
         self, action
     ):
@@ -141,25 +143,26 @@ class SafetyRewardWrapper(Wrapper):
             elif abs(other_y) < 0.03 and abs(other_x) < 0.075 and other_vx < -0.12:
                 reward *= 0.5
                 break
+        
+        if self.mid_lane_reward:
+            ### SAC's reward when ego in the middle of the lane
+            ### others comment out this part
+            ego_y = obs[0][2]
+            ego_cos_h = obs[0][5]
+            # driving straight
+            if abs(ego_cos_h - 1) < 0.05:
+                # four lanes
+                delta_0 = abs(ego_y - 0)
+                delta_1 = abs(ego_y - 0.25)
+                delta_2 = abs(ego_y - 0.5)
+                delta_3 = abs(ego_y - 0.75)
 
-        ### SAC's reward when ego in the middle of the lane
-        ### others comment out this part
-        ego_y = obs[0][2]
-        ego_cos_h = obs[0][5]
-        # driving straight
-        if abs(ego_cos_h - 1) < 0.05:
-            # four lanes
-            delta_0 = abs(ego_y - 0)
-            delta_1 = abs(ego_y - 0.25)
-            delta_2 = abs(ego_y - 0.5)
-            delta_3 = abs(ego_y - 0.75)
-
-            min_delta = min(delta_0, delta_1, delta_2, delta_3)
-            if min_delta > 0.03:
-                reward *= 0.5
-            elif min_delta > 0.015:
-                reward *= 0.75
-        ### others comment out this part
+                min_delta = min(delta_0, delta_1, delta_2, delta_3)
+                if min_delta > 0.03:
+                    reward *= 0.5
+                elif min_delta > 0.015:
+                    reward *= 0.75
+            ### others comment out this part
 
 
         return obs, reward, done, truncated, info

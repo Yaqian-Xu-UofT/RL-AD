@@ -6,7 +6,7 @@ from highway_env.vehicle.kinematics import Vehicle
 from agents.rule_based.agent import RuleBasedAgent
 from agents.evaluation import EvaluationManager
 
-from agents.custom.custom import NoisyObservationWrapper
+from agents.custom.custom import NoisyObservationWrapper, SafetyRewardWrapper
 
 # Rule-Based Agent Evaluation Configuration
 config = {
@@ -35,6 +35,7 @@ def eval_rule_based(lccd=3, trt=1.2):
     num_episodes = 100
 
     print("Starting evaluation...")
+    print(f"\n=== Eval RB w. lccd={lccd} and trt={trt} ===")
     metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
     eval_manager.print_results(metrics)
             
@@ -53,6 +54,46 @@ def eval_rule_based_w_noise(lccd=3, trt=1.2):
     num_episodes = 100
 
     print("Starting evaluation with noisy observations...")
+    print(f"\n=== Eval RB w. lccd={lccd} and trt={trt} ===")
+    metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
+    eval_manager.print_results(metrics)
+            
+    # Plot metrics
+    print("\nPlotting metrics...")
+    eval_manager.plot_metrics(metrics, title="Rule Based Agent Evaluation with Noise")
+    
+    env.close()
+
+def eval_rule_based_w_custom_reward(lccd=3, trt=1.2):
+    env = gym.make("highway-v0", render_mode="human", config=config)
+    env = SafetyRewardWrapper(env, mid_lane_reward=False)
+    
+    agent = RuleBasedAgent(env, lccd=lccd, trt=trt)
+    eval_manager = EvaluationManager(save_dir="eval_results")
+    num_episodes = 20
+
+    print("Starting evaluation with custom reward...")
+    print(f"\n=== Eval RB w. lccd={lccd} and trt={trt} ===")
+    metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
+    eval_manager.print_results(metrics)
+            
+    # Plot metrics
+    print("\nPlotting metrics...")
+    eval_manager.plot_metrics(metrics, title="Rule Based Agent Evaluation with Noise")
+    
+    env.close()
+
+def eval_rule_based_w_noise_custom_reward(lccd=3, trt=1.2):
+    env = gym.make("highway-v0", render_mode="human", config=config)
+    env = NoisyObservationWrapper(env, normalize=False)
+    env = SafetyRewardWrapper(env, mid_lane_reward=False)
+    
+    agent = RuleBasedAgent(env, lccd=lccd, trt=trt)
+    eval_manager = EvaluationManager(save_dir="eval_results")
+    num_episodes = 20
+
+    print("Starting evaluation with noisy observations and custom reward...")
+    print(f"\n=== Eval RB w. lccd={lccd} and trt={trt} ===")
     metrics = eval_manager.evaluate_agent(agent=agent, env=env, num_episodes=num_episodes)
     eval_manager.print_results(metrics)
             
@@ -331,20 +372,18 @@ def eval_rule_based_and_dqn():
 
 
 if __name__ == "__main__":
-    ## Rule-Based evaluation
-    ## Rule-Based specific parameters
-    ## See readme.md for details
-    lccd = 3
-    trt = 1.2
-    run = 1
-    print(f"\n=== Eval RB w. lccd={lccd} and trt={trt}: Run {run} ===")
-    eval_rule_based(lccd=lccd, trt=trt)
-    # eval_rule_based_w_noise(lccd=lccd, trt=trt)
+    ## Evaluating Rule Based Agent Variants, DQN, PPO
+    ## SAC evaluation scripts are under agents/sac directory
+
     # eval_rule_based()
+    # eval_rule_based_w_noise()
+    # eval_rule_based_w_custom_reward()
+    eval_rule_based_w_noise_custom_reward()
+    
     # eval_two_rule_based_agents()
 
     # eval_rule_based_and_sac()
     # eval_rule_based_and_ppo()
-    eval_rule_based_and_dqn()
+    # eval_rule_based_and_dqn()
 
     # eval_ppo()
