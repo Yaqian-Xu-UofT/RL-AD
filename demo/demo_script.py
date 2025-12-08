@@ -212,8 +212,8 @@ def demo_dqn():
 
 
 if __name__ == "__main__":
-    # demo_ppo()
+    demo_ppo()
     # demo_sac()
     # demo_rule_based()
-    demo_dqn()
+    # demo_dqn()
 
