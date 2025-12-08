@@ -8,7 +8,7 @@ agents/rule_based/
 │ └── rule_based-episode-0.mp4 # A test run of Rule-Based agent
 ├── agent.py  # Rule-Based agent code
 ├── init_test_rule_based.py # Script to run and test rule-based agent
-├── videos/ # Video output directory
+└──  videos/ # Video output directory
 ```
 
 ## Basics
