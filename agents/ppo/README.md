@@ -10,7 +10,6 @@ It includes training scripts, pretrained models, evaluation tools, and rollout v
 agents/ppo/
 │
 ├── ppo.py # Training script
-├── test_evaluation_framework.py # Evaluation utilities
 │
 ├── save_models/ # Pretrained PPO models
 │ └── 11.29_penalty_2 # Best PPO model
@@ -58,7 +57,7 @@ You can load these models directly in your scripts.
 
 To evaluate a model using the framework, run the evaluation function:
 
-```bash
-python test_evaluation_framework.py
-```
+```python
+from test_evaluation_framework import eval_ppo
+eval_ppo()
 
