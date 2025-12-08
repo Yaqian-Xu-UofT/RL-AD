@@ -24,7 +24,7 @@ agents/rule_based/
 
 ## Additional Details
 1. Implemented lane change cooldown logic to avoid constant lane changing behaviours.
-2. Front safe distance changing with agent speed, and increases in a few steps immediately after lane changing. (IMPORTANT)
+2. Front safe distance changing with agent speed, and immediately increases and gradually decreases in a few steps after lane changing. (IMPORTANT safety estimates)
 3. Dynamic and static lane change conditions. 
 4. Added **`_act_hy_safe_rule()`** to perform minimum safety check for potential hybrid (RL+rule-based safety check) autonomous driving setup. 
 

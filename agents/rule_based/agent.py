@@ -66,10 +66,8 @@ class RuleBasedAgent:
         ###################################
 
         FRONT_SAFE_DIST = self.MIN_STATIC_GAP + ego_spd * self.TARGET_REACT_TIME
-        dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)
-        FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN)*(FRONT_SAFE_DIST - self.REAR_STATIC_GAP)
-        # # FRONT_SAFE_DIST -= (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)*self.VEHICLE_LENGTH*0.3 # *1.25
-        # FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, FRONT_STATIC_GAP)
+        dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter) / self.LANE_CHANGE_COOLDOWN
+        FRONT_SAFE_DIST = (1-dist_factor) * FRONT_SAFE_DIST + dist_factor * self.REAR_STATIC_GAP
         FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, self.FRONT_STATIC_GAP)
 
         if self.cooldown_counter > 0:
@@ -253,8 +251,8 @@ class RuleBasedAgent:
         ego_spd = np.sqrt(ego_vx**2 + ego_vy**2)
 
         FRONT_SAFE_DIST = self.MIN_STATIC_GAP + ego_spd * self.TARGET_REACT_TIME
-        dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter)
-        FRONT_SAFE_DIST -= (dist_factor / self.LANE_CHANGE_COOLDOWN) * (FRONT_SAFE_DIST - self.REAR_STATIC_GAP)
+        dist_factor = (self.LANE_CHANGE_COOLDOWN - self.cooldown_counter) / self.LANE_CHANGE_COOLDOWN
+        FRONT_SAFE_DIST = (1-dist_factor) * FRONT_SAFE_DIST + dist_factor * self.REAR_STATIC_GAP
         FRONT_SAFE_DIST = max(FRONT_SAFE_DIST, self.FRONT_STATIC_GAP)
 
         dist_cur_lane = 200
