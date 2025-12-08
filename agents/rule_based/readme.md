@@ -1,6 +1,7 @@
 # Rule-Based Agent
 
 ## Folder Structure Overview
+```
 agents/rule_based/
 │
 ├── videos # Directory to save test run videos
@@ -8,6 +9,7 @@ agents/rule_based/
 ├── agent.py  # Rule-Based agent code
 ├── init_test_rule_based.py # Script to run and test rule-based agent
 ├── videos/ # Video output directory
+```
 
 ## Basics
 1. Rule-Based Agent takes in unnormalized observation data.
