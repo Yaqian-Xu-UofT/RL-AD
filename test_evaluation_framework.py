@@ -373,7 +373,7 @@ def eval_rule_based_and_dqn():
 
 if __name__ == "__main__":
     ## Evaluating Rule Based Agent Variants, DQN, PPO
-    ## SAC and PPO evaluation scripts are under agents/sac and agents/ppo directories respectively.
+    ## SAC evaluation scripts are under agents/sac directories.
 
     eval_rule_based()
     # eval_rule_based_w_noise()
