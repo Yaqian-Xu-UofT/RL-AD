@@ -17,21 +17,21 @@ agents/rule_based/
 3. The Decision Making block can be further divided into two sets of decision logics for actively overtaking and safety. Please check project report and code for details. 
 
 ## Decision Logics
-1. For every car observed, update safety distances, gaps, and lane availability.
+1. For every car observed, update frontal afety distances, corner gaps, and lane availability.
 2. Decide if left / right lane is free and probable to change lane.
 3. Change lane when current x distance is less than minimum or other left right lanes are clearer.
-4. Otherwise cruise at target speed.
+4. Otherwise cruise at target speed through Bang-Bang control.
 
 ## Additional Details
 1. Implemented lane change cooldown logic to avoid constant lane changing behaviours.
 2. Front safe distance changing with agent speed, and increases in a few steps immediately after lane changing. (IMPORTANT)
 3. Dynamic and static lane change conditions. 
-4. Added _act_hy_safe_rule() to perform minimum safety check for potential hybrid (RL+rule-based safety check) autonomous driving setup. 
+4. Added **`_act_hy_safe_rule()`** to perform minimum safety check for potential hybrid (RL+rule-based safety check) autonomous driving setup. 
 
 ## Key Parameters
-1. target_speed: cruise target speed. Default is 30m/s.
-2. lccd: lane change cooldown. Minimum steps between lane changes to mitigate oscillating between lanes. Default is 5.
-3. trt: target react time. Default is 1.2s. 
+1. **`TARGET_SPEED`**: cruise target speed. Default is 30m/s. 
+2. **`LANE_CHANGE_COOLDOWN`**: lane change cooldown. Minimum steps between lane changes to mitigate oscillating between lanes. Default is 3.
+3. **`TARGET_REACT_TIME`**: target react time. This is used to update frontal safe distance and corner gaps. Default is 1.2s. 
 
 ## Others
 1. A simple test script that saves an example demo video is at **`RL-AD/agents/rule_based/init_test_rule_based.py`**
