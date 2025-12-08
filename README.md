@@ -7,16 +7,14 @@ RL experiments on highway-env with multiple agent implementations.
 ```
 RL-AD/
 ├── agents/
-│   ├── rule_based/    # Rule-based agent implementations
+│   ├── rule_based/    # Rule-based agent implementation
 │   ├── dqn/           # DQN agent
 │   ├── ppo/           # PPO agent
 │   └── sac/           # SAC agent
-├── utils/             # Shared utilities (env wrappers, metrics, logging)
-├── configs/           # Experiment configurations
-└── results/           # Put your training outputs here (gitignored)
+├── demo/              # Quick demo run for each type of agent
+├── eval_results/      # Output diagrams from evaluatiom runs
+└── results/           # Training outputs (e.g. DRL models, tensorboard logs)
 ```
-
-Each agent directory is independent to avoid merge conflicts when multiple people work on different agents.
 
 ## Setup with uv
 
@@ -28,21 +26,51 @@ uv sync
 ```
 This creates a `.venv/` and installs all packages from `pyproject.toml`.
 
-**Add new library** (like `pip install package-name`):
-```bash
-uv add package-name
-```
-This installs the package AND automatically updates `pyproject.toml` and `uv.lock`.
+## Agent Documentation
 
-**Run scripts:**
+Each agent implementation has its own detailed README with training and configuration information:
+
+- [Rule-Based Agent](agents/rule_based/readme.md)
+- [DQN Agent](agents/dqn/README.md)
+- [PPO Agent](agents/ppo/README.md)
+- [SAC Agent](agents/sac/readme.md)
+
+## Running Demos
+
+To run quick demonstrations of trained agents, use `demo/demo_script.py`:
+
 ```bash
-uv run python agents/rule_based/train.py    # Run directly with uv
-# or activate the virtual environment first
 source .venv/bin/activate
-python agents/rule_based/train.py
+python demo/demo_script.py
 ```
 
-**Resolve conflicts:**
-- If `uv.lock` conflicts: `uv lock --upgrade` to regenerate
-- If dependency errors: `uv sync --refresh` to clear cache and re-sync
+Edit the `__main__` block to select which agent to demo (uncomment the desired function).
+
+Each demo function:
+- Loads a trained agent model
+- Records 3 episodes as videos
+- Saves videos to `demo/{agent_type}_demo_videos/`
+
+## Running Evaluations
+
+To evaluate and compare agent performance, use `test_evaluation_framework.py`:
+
+```bash
+source .venv/bin/activate
+python test_evaluation_framework.py
+```
+
+Edit the `__main__` block to select which evaluation to run:
+
+```python
+if __name__ == "__main__":
+    eval_rule_based()                    # Evaluate rule-based agent
+    # eval_rule_based_and_dqn()          # Compare rule-based vs DQN
+    # eval_rule_based_and_ppo()          # Compare rule-based vs PPO
+    # eval_rule_based_and_sac()          # Compare rule-based vs SAC
+```
+
+Evaluation results:
+- Metrics are printed to console (collision rate, avg speed, etc.)
+- Plots are saved to `eval_results/`
 
