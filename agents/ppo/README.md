@@ -7,6 +7,7 @@ It includes training scripts, pretrained models, evaluation tools, and rollout v
 
 ## Folder Structure Overview
 
+```
 agents/ppo/
 │
 ├── ppo.py # Training script
@@ -16,7 +17,7 @@ agents/ppo/
 │
 ├── training_model/ # Training logs
 └── videos/ # Training rollout videos
-
+```
 
 ---
 
