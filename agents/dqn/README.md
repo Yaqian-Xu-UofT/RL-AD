@@ -7,6 +7,7 @@ It includes training scripts with different configurations, environment wrappers
 
 ## Folder Structure Overview
 
+```
 agents/dqn/
 │
 ├── sb3_dqn_train.py  # Basic DQN training script
@@ -17,7 +18,7 @@ agents/dqn/
 │
 ├── results/models/  # Trained DQN models (output directory)
 └── results/logs/  # Training logs (output directory)
-
+```
 
 ---
 

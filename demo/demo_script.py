@@ -197,7 +197,7 @@ def demo_dqn():
     env = RecordEpisodeStatistics(env)
 
     # Load model
-    model_path = "results/models/dqn_default"
+    model_path = "agents/dqn/dqn_default"
     agent = DQN.load(model_path, env=env)
     print("load succes")
 
