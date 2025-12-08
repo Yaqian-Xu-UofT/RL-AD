@@ -174,8 +174,7 @@ def demo_dqn():
             "duration": 60,  # longer episode for overtaking
             "observation": {
                 "type": "Kinematics",
-                "vehicles_count": 10,   # observe 15 vehicles around ego
-                "features": ["presence", "x", "y", "vx", "vy", "cos_h", "sin_h"],
+                "features": ["presence", "x", "y", "vx", "vy"],
                 "absolute": False,
                 "order": "sorted"
             },
@@ -198,7 +197,7 @@ def demo_dqn():
     env = RecordEpisodeStatistics(env)
 
     # Load model
-    model_path = "David's model path"
+    model_path = "results/models/dqn_default"
     agent = DQN.load(model_path, env=env)
     print("load succes")
 
@@ -213,8 +212,8 @@ def demo_dqn():
 
 
 if __name__ == "__main__":
-    demo_ppo()
+    # demo_ppo()
     # demo_sac()
     # demo_rule_based()
-    # demo_dqn()
+    demo_dqn()
 
